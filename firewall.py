@@ -16,10 +16,10 @@ class Firewall:
         self.iface_ext = iface_ext
 
         # TODO: Load the firewall rules (from rule_filename) here.
-	rule_list = makeRuleList(config)
+	self.rule_list = makeRuleList(config)
 
 	print ("rule_list:")
-	for rule in rule_list:
+	for rule in self.rule_list:
 		print(rule.verdict, rule.proto, rule.ext_ip, rule.ext_port, rule.domain_name)
 
         # TODO: Load the GeoIP DB ('geoipdb.txt') as well.
@@ -45,11 +45,29 @@ class Firewall:
 
 	print ("hi")
 	pkt_src = struct.unpack("!L", pkt[12:16])[0]
-	print ("country: ", find_country2(pkt_src, self.ip_list))
+	#print ("country: ", find_country2(pkt_src, self.ip_list))
 
-	current_packet = Packet(pkt)	
+	current_packet = Packet(pkt)
 
-        pass
+	for rule in self.rule_list:
+		decision = rule.compare(current_packet)
+		if decision == -1: #packet should be dropped
+			pass
+		elif decision == 1: #packet should be passed through
+			print ("packet was correct")			
+			if pkt_dir == PKT_DIR_INCOMING:
+			    self.iface_int.send_ip_packet(pkt)
+			elif pkt_dir == PKT_DIR_OUTGOING:
+			    self.iface_ext.send_ip_packet(pkt)
+
+	#if nothing is found, pass packet
+	print("no appropriate rule was found")
+        if pkt_dir == PKT_DIR_INCOMING:
+            self.iface_int.send_ip_packet(pkt)
+        elif pkt_dir == PKT_DIR_OUTGOING:
+            self.iface_ext.send_ip_packet(pkt)
+
+	return
 
     # TODO: You can add more methods as you want.
 
@@ -82,10 +100,17 @@ class Rule:
 			
 
 
-	def compare(header):
+	def compare(self, packet):
 		if (self.proto == "dns"):
 			print("ugh")
 			#compare dns stuff
+			#if everything matches
+			if (self.verdict == "pass"):
+				return 1
+			elif (self.verdict == "drop"):
+				return -1
+			else:
+				print ("unknown verdict: ", self.verdict)
 		else:
 			print ("idk")
 			#compare p/i/p stuff
@@ -184,6 +209,6 @@ def find_country2(ip, geoip_list):
 
 		if ((min_cmp == 1 and max_cmp == -1) or min_cmp == 0 or max_cmp == 0):
 			return line[2]
-		
+
 
 
