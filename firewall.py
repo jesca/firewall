@@ -3,6 +3,7 @@
 from main import PKT_DIR_INCOMING, PKT_DIR_OUTGOING
 
 import struct
+import socket
 
 
 # TODO: Feel free to import any Python standard moduless as necessary.
@@ -43,8 +44,8 @@ class Firewall:
         # TODO: Your main firewall code will be here.
 
 	print ("hi")
-	pkt_src = struct.unpack("!L", pkt[12:16])
-	#print ("country: ", find_country(pkt_src, self.ip_list))
+	pkt_src = struct.unpack("!L", pkt[12:16])[0]
+	print ("country: ", find_country2(pkt_src, self.ip_list))
 
 	current_packet = Packet(pkt)	
 
@@ -95,7 +96,8 @@ class Packet:
 		pkt_src = struct.unpack("!L", pkt[12:16])
 		print (pkt_src)
 
-		pkt_proto_num = struct.unpack("!L", pkt[9:10])
+		#pkt_proto_num = struct.unpack("!L", pkt[9:10])
+		pkt_proto_num = "1"
 
 		print("proto num: ", pkt_proto_num) 
 		if (pkt_proto_num == "1"):
@@ -146,24 +148,42 @@ def ip_compare(ip1, ip2):
 
 def ip_to_int(ip_str):
 	split = ip_str.split('.')
-	return (split[0] * 16777216) + (split[1] * 65536) + (split[2] * 256) + (split[3])
+	#return 100000000 #(split[0] * 16777216) + (split[1] * 65536) + (split[2] * 256) + (split[3])
+	return struct.unpack("!I", socket.inet_aton(ip_str))[0]
 
 
 def find_country(ip, geoip_list):
 	for line in geoip_list:
-		print(line)
+		#print(line)
 		min_ip = ip_to_int(line[0])
 		max_ip = ip_to_int(line[1])
-		if (ip >= min_ip and ip <= max_ip):
+		print("ip:    ", ip)
+		print("min_ip:", min_ip)
+		print("max_ip:", max_ip)
+		print("min is below:", min_ip <= ip)
+		print("max is above:", max_ip >= ip)
+		print
+		if (min_ip <= ip and max_ip >= ip):
+			print("FOUND COUNTRY")
 			return line[2]
+	return "No country found"
 		
 
 
 def find_country2(ip, geoip_list):
+	ip_str = socket.inet_ntoa(struct.pack("!I", ip))  
 	for line in geoip_list:
-		min_cmp = ip_compare(ip, line[0])
-		max_cmp = ip_compare(ip, line[1])
+		min_cmp = ip_compare(ip_str, line[0])
+		max_cmp = ip_compare(ip_str, line[1])
+
+		#print(line)
+		#print(ip_str)
+		#print("min_cmp:", min_cmp)
+		#print("max_cmp:", max_cmp)
+		#print
+
 		if ((min_cmp == 1 and max_cmp == -1) or min_cmp == 0 or max_cmp == 0):
 			return line[2]
 		
+
 
