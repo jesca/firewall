@@ -92,8 +92,8 @@ class Rule:
 			#compare p/i/p stuff
 
 class Packet:
-	def __init__(self, pkt, pkt_dir):
-		pkt_proto_num = struct.unpack("!B", pkt[9:10])
+    def __init__(self, pkt, pkt_dir):
+        pkt_proto_num = struct.unpack("!B", pkt[9:10])
         drop_pkt = false
 
 
@@ -119,7 +119,6 @@ class Packet:
         else
             pkt_proto = "any"
             # just pass this
-
 
 
     def dropPacket():
