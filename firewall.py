@@ -21,28 +21,39 @@ class Firewall:
 
 	self.ip_list = self.getGeoList()
 
- 	return
 
-     def handle_packet(self, pkt_dir, pkt):
+    def handle_packet(self, pkt_dir, pkt):
         # TODO: Your main firewall code will be here.
-        # Figue out if pkt is incoming or outgoing
-        if pkt_dir == PKT_DIR_INCOMING:
-            dir_str = 'incoming'
-        else:
-            dir_str = 'outgoing'
 
-        current_packet = Packet(pkt, pkt_dir)
+	pkt_src = struct.unpack("!L", pkt[12:16])[0]
+	#print ("country: ", find_country2(pkt_src, self.ip_list))
 
-        if current_packet.drop():
-            .send_ip_packet()
+    current_packet = Packet(pkt, pkt_dir)
 
-
-
-        if pkt_dir == PKT_DIR_INCOMING:
-            self.iface_int.send_ip_packet(pkt, pkt_dir)
-        elif pkt_dir == PKT_DIR_OUTGOING:
-            self.iface_ext.send_ip_packet(pkt, pkt_dir)
+    if current_packet.drop():
         pass
+
+
+	for rule in self.rule_list:
+		decision = rule.compare(current_packet)
+		if decision == -1: #packet should be dropped
+			pass
+		elif decision == 1: #packet should be passed through
+			print ("packet was correct")
+			if pkt_dir == PKT_DIR_INCOMING:
+			    self.iface_int.send_ip_packet(pkt)
+			elif pkt_dir == PKT_DIR_OUTGOING:
+			    self.iface_ext.send_ip_packet(pkt)
+
+	#if nothing is found, pass packet
+	print("no appropriate rule was found")
+        if pkt_dir == PKT_DIR_INCOMING:
+            self.iface_int.send_ip_packet(pkt)
+        elif pkt_dir == PKT_DIR_OUTGOING:
+            self.iface_ext.send_ip_packet(pkt)
+
+	return
+
 
     # Helper method to get the country codes
     def getGeoList():
@@ -83,13 +94,13 @@ class Rule:
 
 
 
-	def compare(header):
+	def compare(cur_packet):
 		if (self.proto == "dns"):
-			print("ugh")
-			#compare dns stuff
+
+
 		else:
-			print ("idk")
-			#compare p/i/p stuff
+			
+
 
 class Packet:
     def __init__(self, pkt, pkt_dir):
@@ -107,16 +118,16 @@ class Packet:
             self.next_header_begin = ip_header_len * 4
 
         #after getting the protocols, get the source and destination ports from the right places
-		if (pkt_proto_num == "1"):
-			pkt_proto = "icmp"
+        if (pkt_proto_num == "1"):
+            pkt_proto = "icmp"
             self.port = self.getType()
-		elif (pkt_proto_num == "6"):
-			pkt_proto = "tcp"
+	elif (pkt_proto_num == "6"):
+	    pkt_proto = "tcp"
             self.port = self.getPorts()
- 		elif (pkt_proto_num == "17"):
-			pkt_proto = "udp"
+ 	elif (pkt_proto_num == "17"):
+	    pkt_proto = "udp"
             self.port = self.getPorts()
-        else
+        else:
             pkt_proto = "any"
             # just pass this
 
@@ -125,20 +136,11 @@ class Packet:
         #drop packet under certain conditions
         return self.drop_pkt
 
-    """ get ports: Your firewall should examine “external” ports. For incoming packets (from the outside network to the
-    VM), the source port field contains the external port. For outgoing packets (from the VM to the outside
-    network), the destination port field contains the external port. Do not ignore endianness, since these are
-    2­byte fields."""
 
     def getPorts():
         if (pkt_dir == 'incoming'):
             # incoming, examine source
             port = struct.unpack("!H", pkt[0:2])
-
-        else:
-            #outgoing, examine destination
-            port = struct.unpack("!H", pkt[2:4])
-
 
         else:
             #outgoing, examine destination
