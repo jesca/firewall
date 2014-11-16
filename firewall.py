@@ -105,17 +105,20 @@ class Packet:
             #beginning of next header == headerlen * 4
             #this is where the next header begins
             self.next_header_begin = ip_header_len * 4
-            
+
         #after getting the protocols, get the source and destination ports from the right places
 		if (pkt_proto_num == "1"):
 			pkt_proto = "icmp"
+            self.port = self.getType()
 		elif (pkt_proto_num == "6"):
 			pkt_proto = "tcp"
-            self.getTcpPorts()
+            self.port = self.getPorts()
  		elif (pkt_proto_num == "17"):
 			pkt_proto = "udp"
+            self.port = self.getPorts()
         else
             pkt_proto = "any"
+            # just pass this
 
 
 
@@ -128,20 +131,24 @@ class Packet:
     network), the destination port field contains the external port. Do not ignore endianness, since these are
     2­byte fields."""
 
-    def getTcpPorts():
+    def getPorts():
         if (pkt_dir == 'incoming'):
-            # incoming, examine external
+            # incoming, examine source
+            port = struct.unpack("!H", pkt[0:2])
+
+        else:
+            #outgoing, examine destination
+            port = struct.unpack("!H", pkt[2:4])
 
 
         else:
-            #outgoing
+            #outgoing, examine destination
+            port = struct.unpack("!H", pkt[2:4])
 
-    def getIcmpPorts():
-        if (pkt_dir == 'incoming'):
-            # incoming, examine external
-
-        else:
-            #outgoing
+    # for ICMP, the type is the port
+    def getImcpType():
+        # high 4 bits
+        port = struct.unpack("!L", pkt[0:1]) >> 4
 
 
 
