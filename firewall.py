@@ -95,17 +95,14 @@ class Rule:
 
 
 	def compare(cur_packet):
-		if (self.proto == "dns"):
+		print cur_packet.
 
-
-		else:
-			
 
 
 class Packet:
     def __init__(self, pkt, pkt_dir):
         pkt_proto_num = struct.unpack("!B", pkt[9:10])
-        drop_pkt = false
+        self.drop_pkt = false
 
 
         #last four bits of first byte
@@ -119,16 +116,16 @@ class Packet:
 
         #after getting the protocols, get the source and destination ports from the right places
         if (pkt_proto_num == "1"):
-            pkt_proto = "icmp"
+            self.pkt_proto = "icmp"
             self.port = self.getType()
-	elif (pkt_proto_num == "6"):
-	    pkt_proto = "tcp"
+	    elif (pkt_proto_num == "6"):
+	        self.pkt_proto = "tcp"
             self.port = self.getPorts()
- 	elif (pkt_proto_num == "17"):
-	    pkt_proto = "udp"
+        elif (pkt_proto_num == "17"):
+	        self.pkt_proto = "udp"
             self.port = self.getPorts()
         else:
-            pkt_proto = "any"
+            self.pkt_proto = "any"
             # just pass this
 
 
