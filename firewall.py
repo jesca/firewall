@@ -14,45 +14,46 @@ class Firewall:
         self.iface_int = iface_int
         self.iface_ext = iface_ext
 
- 	rule_list = makeRuleList(config)
-	print ("rule_list:")
-	for rule in rule_list:
-		print(rule.verdict, rule.proto, rule.ext_ip, rule.ext_port, rule.domain_name)
+ 	    self.rule_list = makeRuleList(config)
+	    print ("rule_list:")
+	    for rule in rule_list:
+            print(rule.verdict, rule.proto, rule.ext_ip, rule.ext_port, rule.domain_name)
 
-	self.ip_list = self.getGeoList()
-
+	    self.ip_list = self.getGeoList()
 
     def handle_packet(self, pkt_dir, pkt):
         # TODO: Your main firewall code will be here.
 
-	pkt_src = struct.unpack("!L", pkt[12:16])[0]
-	#print ("country: ", find_country2(pkt_src, self.ip_list))
+        # country src
+	    pkt_src = struct.unpack("!L", pkt[12:16])[0]
 
-    current_packet = Packet(pkt, pkt_dir)
+        if current_packet.drop():
+            # packet needs to be dropped for whatever reason before comparing the rules
+            self.iface_int.send_ip_packet()
+        else:
+            # compare packet details to the rules
+            if (len(self.rule_list) > 0):
+                for rule in self.rule_list:
+                    decision = rule.compare(current_packet)
+                    if decision == -1:
+                        #packet should be dropped
+                        self.iface_int.send_ip_packet()
+                    elif decision == 1:
+                        # allow packet to pass
+                        print 'Passing Packet'
+                        if pkt_dir == PKT_DIR_INCOMING:
+                            self.iface_int.send_ip_packet(pkt)
+                        elif pkt_dir == PKT_DIR_OUTGOING:
+                            self.iface_ext.send_ip_packet(pkt)
+            else:
+                # no rules, pass all packets
+                print("empty rule list")
+                    if pkt_dir == PKT_DIR_INCOMING:
+                        self.iface_int.send_ip_packet(pkt)
+                    elif pkt_dir == PKT_DIR_OUTGOING:
+                        self.iface_ext.send_ip_packet(pkt)
 
-    if current_packet.drop():
-        pass
 
-
-	for rule in self.rule_list:
-		decision = rule.compare(current_packet)
-		if decision == -1: #packet should be dropped
-			pass
-		elif decision == 1: #packet should be passed through
-			print ("packet was correct")
-			if pkt_dir == PKT_DIR_INCOMING:
-			    self.iface_int.send_ip_packet(pkt)
-			elif pkt_dir == PKT_DIR_OUTGOING:
-			    self.iface_ext.send_ip_packet(pkt)
-
-	#if nothing is found, pass packet
-	print("no appropriate rule was found")
-        if pkt_dir == PKT_DIR_INCOMING:
-            self.iface_int.send_ip_packet(pkt)
-        elif pkt_dir == PKT_DIR_OUTGOING:
-            self.iface_ext.send_ip_packet(pkt)
-
-	return
 
 
     # Helper method to get the country codes
@@ -64,6 +65,67 @@ class Firewall:
             split_line = line.split(" ")
             ip_list.append(split_line)
         return ip_list
+
+    def makeRuleList(config):
+        config_file = open(config['rule'],"r")
+        rule_str_list = config_file.readlines()
+        i = 0
+        while (i < len(rule_str_list)):
+            line = rule_str_list[i]
+            if (line[0] == '%' or len(line.split(" ")) < 3):
+                rule_str_list.remove(line)
+            else:
+                i += 1
+
+        rule_list = []
+
+        i -= 1
+        while (i > -1):
+            rule_line = rule_str_list[i]
+            rule_list.append(Rule(rule_line))
+            i -= 1
+
+        return rule_list
+
+
+    #compares two ip values in string format
+    #return 1 if 1st ip is greater, -1 if 2nd ip is greater
+    def ip_compare(ip1, ip2):
+        ip1_split = ip1.split('.')
+        ip2_split = ip2.split('.')
+        i = 0
+        while (i < len(ip1_split)):
+            ip1_curNum = ip1_split[i]
+            ip2_curNum = ip2_split[i]
+            if (ip1_curNum > ip2_curNum):
+                return 1
+            elif (ip1_curNum < ip2_curNum):
+                return -1
+
+        return 0
+
+    def ip_to_int(ip_str):
+        split = ip_str.split('.')
+        return (split[0] * 16777216) + (split[1] * 65536) + (split[2] * 256) + (split[3])
+
+
+    def find_country(ip, geoip_list):
+        for line in geoip_list:
+            print(line)
+            min_ip = ip_to_int(line[0])
+            max_ip = ip_to_int(line[1])
+            if (ip >= min_ip and ip <= max_ip):
+                return line[2]
+
+
+
+    def find_country2(ip, geoip_list):
+        for line in geoip_list:
+            min_cmp = ip_compare(ip, line[0])
+            max_cmp = ip_compare(ip, line[1])
+            if ((min_cmp == 1 and max_cmp == -1) or min_cmp == 0 or max_cmp == 0):
+                return line[2]
+
 
 
 class Rule:
@@ -147,67 +209,3 @@ class Packet:
     def getImcpType():
         # high 4 bits
         port = struct.unpack("!L", pkt[0:1]) >> 4
-
-
-
-
-
-def makeRuleList(config):
-	config_file = open(config['rule'],"r")
-	rule_str_list = config_file.readlines()
-	i = 0
-	while (i < len(rule_str_list)):
-		line = rule_str_list[i]
-		if (line[0] == '%' or len(line.split(" ")) < 3):
-			rule_str_list.remove(line)
-		else:
-			i += 1
-
-	rule_list = []
-
-	i -= 1
-	while (i > -1):
-		rule_line = rule_str_list[i]
-		rule_list.append(Rule(rule_line))
-		i -= 1
-
-	return rule_list
-
-
-#compares two ip values in string format
-#return 1 if 1st ip is greater, -1 if 2nd ip is greater
-def ip_compare(ip1, ip2):
-	ip1_split = ip1.split('.')
-	ip2_split = ip2.split('.')
-	i = 0
-	while (i < len(ip1_split)):
-		ip1_curNum = ip1_split[i]
-		ip2_curNum = ip2_split[i]
-		if (ip1_curNum > ip2_curNum):
-			return 1
-		elif (ip1_curNum < ip2_curNum):
-			return -1
-
-	return 0
-
-def ip_to_int(ip_str):
-	split = ip_str.split('.')
-	return (split[0] * 16777216) + (split[1] * 65536) + (split[2] * 256) + (split[3])
-
-
-def find_country(ip, geoip_list):
-	for line in geoip_list:
-		print(line)
-		min_ip = ip_to_int(line[0])
-		max_ip = ip_to_int(line[1])
-		if (ip >= min_ip and ip <= max_ip):
-			return line[2]
-
-
-
-def find_country2(ip, geoip_list):
-	for line in geoip_list:
-		min_cmp = ip_compare(ip, line[0])
-		max_cmp = ip_compare(ip, line[1])
-		if ((min_cmp == 1 and max_cmp == -1) or min_cmp == 0 or max_cmp == 0):
-			return line[2]
