@@ -9,6 +9,89 @@ import struct
 # (http://docs.python.org/2/library/)
 # You must NOT use any 3rd-party libraries, though.
 
+class Packet:
+    def __init__(self, pkt, pkt_dir):
+        pkt_proto_num = struct.unpack("!B", pkt[9:10])
+        self.drop_pkt = false
+
+
+        #last four bits of first byte
+        ip_header_len =  struct.unpack("!B", pkt[0:1]) & 0x0F
+        if ip_header_len < 5:
+            drop_pkt = true
+        else:
+            #beginning of next header == headerlen * 4
+            #this is where the next header begins
+            self.next_header_begin = ip_header_len * 4
+
+        #after getting the protocols, get the source and destination ports from the right places
+        if (pkt_proto_num == "1"):
+            self.pkt_proto = "icmp"
+            self.port = self.getType()
+        elif (pkt_proto_num == "6"):
+            self.pkt_proto = "tcp"
+            self.port = self.getPorts()
+        elif (pkt_proto_num == "17"):
+            self.pkt_proto = "udp"
+            self.port = self.getPorts()
+        else:
+            self.pkt_proto = "any"
+            # just pass this
+
+
+    def dropPacket():
+        #drop packet under certain conditions
+        return self.drop_pkt
+
+
+    def getPorts():
+        byte_begin = self.next_header_begin
+        if (pkt_dir == 'incoming'):
+            # incoming, examine source (0:2)
+            port = struct.unpack("!H", pkt[byte_begin:(byte_begin + 2)])
+
+        else:
+            #outgoing, examine destination (2:4)
+            port = struct.unpack("!H", pkt[(byte_begin + 2):(byte_begin+4)])
+
+    # for ICMP, the type is the port
+    def getImcpType():
+        # high 4 bits (0:1) >> 4
+        byte_begin = self.next_header_begin
+        port = struct.unpack("!L", pkt[byte_begin:(byte_begin + 1)]) >> 4
+
+class Rule:
+    def __init__(self, string):
+        rule_line = string.split(" ")
+
+        #cleanup extra spaces
+        i = 0
+        while (i < len(rule_line)):
+            string = rule_line[i]
+            if (len(string) < 1):
+                rule_line.remove(string)
+            else:
+                i += 1
+
+        #allocate strings to fields
+        self.verdict = rule_line[0]
+        self.proto = rule_line[1]
+
+        if (self.proto == 'dns'):
+            self.ext_ip = None
+            self.ext_port = None
+            self.domain_name = rule_line[2]
+        else:
+            self.ext_ip = rule_line[2]
+            self.ext_port = rule_line[3]
+            self.domain_name = None
+
+
+
+    def compare(cur_packet):
+        return 1
+
+
 class Firewall:
     def __init__(self, config, iface_int, iface_ext):
         self.iface_int = iface_int
@@ -125,87 +208,3 @@ class Firewall:
             max_cmp = ip_compare(ip, line[1])
             if ((min_cmp == 1 and max_cmp == -1) or min_cmp == 0 or max_cmp == 0):
                 return line[2]
-
-
-
-class Rule:
-	def __init__(self, string):
-		rule_line = string.split(" ")
-
-		#cleanup extra spaces
-		i = 0
-		while (i < len(rule_line)):
-			string = rule_line[i]
-			if (len(string) < 1):
-				rule_line.remove(string)
-			else:
-				i += 1
-
-		#allocate strings to fields
-		self.verdict = rule_line[0]
-		self.proto = rule_line[1]
-
-		if (self.proto == 'dns'):
-			self.ext_ip = None
-			self.ext_port = None
-			self.domain_name = rule_line[2]
-		else:
-			self.ext_ip = rule_line[2]
-			self.ext_port = rule_line[3]
-			self.domain_name = None
-
-
-
-	def compare(cur_packet):
-		print cur_packet.
-
-
-
-class Packet:
-    def __init__(self, pkt, pkt_dir):
-        pkt_proto_num = struct.unpack("!B", pkt[9:10])
-        self.drop_pkt = false
-
-
-        #last four bits of first byte
-        ip_header_len =  struct.unpack("!B", pkt[0:1]) & 0x0F
-        if ip_header_len < 5:
-            drop_pkt = true
-        else:
-            #beginning of next header == headerlen * 4
-            #this is where the next header begins
-            self.next_header_begin = ip_header_len * 4
-
-        #after getting the protocols, get the source and destination ports from the right places
-        if (pkt_proto_num == "1"):
-            self.pkt_proto = "icmp"
-            self.port = self.getType()
-	    elif (pkt_proto_num == "6"):
-	        self.pkt_proto = "tcp"
-            self.port = self.getPorts()
-        elif (pkt_proto_num == "17"):
-	        self.pkt_proto = "udp"
-            self.port = self.getPorts()
-        else:
-            self.pkt_proto = "any"
-            # just pass this
-
-
-    def dropPacket():
-        #drop packet under certain conditions
-        return self.drop_pkt
-
-
-    def getPorts():
-        if (pkt_dir == 'incoming'):
-            # incoming, examine source
-            port = struct.unpack("!H", pkt[0:2])
-
-        else:
-            #outgoing, examine destination
-            port = struct.unpack("!H", pkt[2:4])
-
-    # for ICMP, the type is the port
-    def getImcpType():
-        # high 4 bits
-        port = struct.unpack("!L", pkt[0:1]) >> 4
