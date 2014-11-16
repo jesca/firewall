@@ -14,45 +14,47 @@ class Firewall:
         self.iface_int = iface_int
         self.iface_ext = iface_ext
 
-        # TODO: Load the firewall rules (from rule_filename) here.
-	rule_list = makeRuleList(config)
-
+ 	rule_list = makeRuleList(config)
 	print ("rule_list:")
 	for rule in rule_list:
 		print(rule.verdict, rule.proto, rule.ext_ip, rule.ext_port, rule.domain_name)
 
-        # TODO: Load the GeoIP DB ('geoipdb.txt') as well.
-	
-	geoip_file = open('geoipdb.txt' ,"r")
-	geoip_str_list = geoip_file.readlines()
-	ip_list = []
-	for line in geoip_str_list:
-		split_line = line.split(" ")
-		ip_list.append(split_line)
-		#ip_list[line[2][0:2]] = (line[0], line[1])
+	self.ip_list = self.getGeoList()
 
-	self.ip_list = ip_list
-	#print (ip_list)
+ 	return
 
-        # TODO: Also do some initialization if needed.
-	return
-
-    # @pkt_dir: either PKT_DIR_INCOMING or PKT_DIR_OUTGOING
-    # @pkt: the actual data of the IPv4 packet (including IP header)
-    def handle_packet(self, pkt_dir, pkt):
+     def handle_packet(self, pkt_dir, pkt):
         # TODO: Your main firewall code will be here.
+        # Figue out if pkt is incoming or outgoing
+        if pkt_dir == PKT_DIR_INCOMING:
+            dir_str = 'incoming'
+        else:
+            dir_str = 'outgoing'
 
-	print ("hi")
-	pkt_src = struct.unpack("!L", pkt[12:16])
-	#print ("country: ", find_country(pkt_src, self.ip_list))
+        current_packet = Packet(pkt, pkt_dir)
 
-	current_packet = Packet(pkt)	
+        if current_packet.drop():
+            .send_ip_packet()
 
+
+
+        if pkt_dir == PKT_DIR_INCOMING:
+            self.iface_int.send_ip_packet(pkt, pkt_dir)
+        elif pkt_dir == PKT_DIR_OUTGOING:
+            self.iface_ext.send_ip_packet(pkt, pkt_dir)
         pass
 
-    # TODO: You can add more methods as you want.
+    # Helper method to get the country codes
+    def getGeoList():
+        geoip_file = open('geoipdb.txt' ,"r")
+        geoip_str_list = geoip_file.readlines()
+        ip_list = []
+        for line in geoip_str_list:
+            split_line = line.split(" ")
+            ip_list.append(split_line)
+        return ip_list
 
-# TODO: You may want to add more classes/functions as well.
+
 class Rule:
 	def __init__(self, string):
 		rule_line = string.split(" ")
@@ -78,7 +80,7 @@ class Rule:
 			self.ext_ip = rule_line[2]
 			self.ext_port = rule_line[3]
 			self.domain_name = None
-			
+
 
 
 	def compare(header):
@@ -90,20 +92,59 @@ class Rule:
 			#compare p/i/p stuff
 
 class Packet:
-	def __init__(self, pkt):
-		print ("packet:")
-		pkt_src = struct.unpack("!L", pkt[12:16])
-		print (pkt_src)
+	def __init__(self, pkt, pkt_dir):
+		pkt_proto_num = struct.unpack("!B", pkt[9:10])
+        drop_pkt = false
 
-		pkt_proto_num = struct.unpack("!L", pkt[9:10])
 
-		print("proto num: ", pkt_proto_num) 
+        #last four bits of first byte
+        ip_header_len =  struct.unpack("!B", pkt[0:1]) & 0x0F
+        if ip_header_len < 5:
+            drop_pkt = true
+        else:
+            #beginning of next header == headerlen * 4
+            #this is where the next header begins
+            self.next_header_begin = ip_header_len * 4
+            
+        #after getting the protocols, get the source and destination ports from the right places
 		if (pkt_proto_num == "1"):
 			pkt_proto = "icmp"
 		elif (pkt_proto_num == "6"):
 			pkt_proto = "tcp"
-		elif (pkt_proto_num == "17"):
+            self.getTcpPorts()
+ 		elif (pkt_proto_num == "17"):
 			pkt_proto = "udp"
+        else
+            pkt_proto = "any"
+
+
+
+    def dropPacket():
+        #drop packet under certain conditions
+        return self.drop_pkt
+
+    """ get ports: Your firewall should examine “external” ports. For incoming packets (from the outside network to the
+    VM), the source port field contains the external port. For outgoing packets (from the VM to the outside
+    network), the destination port field contains the external port. Do not ignore endianness, since these are
+    2­byte fields."""
+
+    def getTcpPorts():
+        if (pkt_dir == 'incoming'):
+            # incoming, examine external
+
+
+        else:
+            #outgoing
+
+    def getIcmpPorts():
+        if (pkt_dir == 'incoming'):
+            # incoming, examine external
+
+        else:
+            #outgoing
+
+
+
 
 
 def makeRuleList(config):
@@ -123,7 +164,7 @@ def makeRuleList(config):
 	while (i > -1):
 		rule_line = rule_str_list[i]
 		rule_list.append(Rule(rule_line))
-		i -= 1 
+		i -= 1
 
 	return rule_list
 
@@ -156,7 +197,7 @@ def find_country(ip, geoip_list):
 		max_ip = ip_to_int(line[1])
 		if (ip >= min_ip and ip <= max_ip):
 			return line[2]
-		
+
 
 
 def find_country2(ip, geoip_list):
@@ -165,5 +206,3 @@ def find_country2(ip, geoip_list):
 		max_cmp = ip_compare(ip, line[1])
 		if ((min_cmp == 1 and max_cmp == -1) or min_cmp == 0 or max_cmp == 0):
 			return line[2]
-		
-
