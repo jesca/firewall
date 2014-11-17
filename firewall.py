@@ -3,6 +3,7 @@
 from main import PKT_DIR_INCOMING, PKT_DIR_OUTGOING
 
 import struct
+import socket
 
 
 # TODO: Feel free to import any Python standard moduless as necessary.
@@ -76,7 +77,8 @@ class Packet:
         return struct.unpack("!B", pkt[byte_begin:(byte_begin + 1)])[0]
 
 class Rule:
-    def __init__(self, string):
+    def __init__(self, string, geoip_list):
+        self.geoip_list = geoip_list
         rule_line = string.split(" ")
 
         #cleanup extra spaces
@@ -118,15 +120,18 @@ class Rule:
             "other type of packet we aren't dealing with"
             return 1
 
+        if (self.proto == 'dns'):
+            return 1
+
         else:
             compare_array = []
             if (self.proto == cur_packet.pkt_proto):
                 print 'protos same'
                 compare_array.append(1)
-            if (self.port_compare(self.ext_port,cur_packet.port)==1):
+            if self.port_compare(self.ext_port, cur_packet.port):
                 print 'ports same'
                 compare_array.append(1)
-            if (self.ext_ip_compare(self.ext_ip, cur_packet.ext_ip) == 1):
+            if self.ext_ip_compare(self.ext_ip, cur_packet.ext_ip):
                 print 'ext same'
                 compare_array.append(1)
 
@@ -145,10 +150,9 @@ class Rule:
             return 0
 
 
-    def port_compare(self,rule_port, packet_port):
-        print 'comparing ports:', packet_port, rule_port
+    def port_compare(self, rule_port, packet_port):
+        print 'comparing ports:', rule_port, packet_port
         if (rule_port == 'any' or rule_port == 'any\n'):
-            print 'rule port is any'
             return 1
 
         #shouldn't reach here because compare should have returned by now
@@ -175,11 +179,14 @@ class Rule:
 
     def ext_ip_compare(self, rule_ip, packet_ip):
         slash_position = rule_ip.find('/')
-        if (rule_ip == 'any'):
+        if (rule_ip == 'any' or rule_ip == 'any\n'):
             return 1
-        elif (rule_ip.isupper() and len(rule_ip) == 2):
+        elif (len(rule_ip) == 2):
             #country code
-            return find_country2(packet_ip) == rule_ip.upper()
+            print ("checking if country matches: ", rule_ip)
+            print ("packet ip: ", socket.inet_ntoa(struct.pack("!I", packet_ip)))
+            print("survey says: ", self.does_ip_match_country2(packet_ip, rule_ip, self.geoip_list))
+            return self.does_ip_match_country2(packet_ip, rule_ip, self.geoip_list)
         elif (slash_position != -1):
             #range of packets
             print("range mode")
@@ -192,7 +199,7 @@ class Rule:
             return packet_ip >= lower_int and packet_ip <= upper_int
         else:
             #rule is just a regular ip
-            int_rule_ip = ip_to_int(rule_ip)
+            int_rule_ip = self.ip_to_int(rule_ip)
             return int_rule_ip == packet_ip
 
 
@@ -211,7 +218,7 @@ class Rule:
 
     #compares two ip values in string format
     #return 1 if 1st ip is greater, -1 if 2nd ip is greater
-    def ip_compare(ip1, ip2):
+    def ip_compare(self, ip1, ip2):
         ip1_split = ip1.split('.')
         ip2_split = ip2.split('.')
         i = 0
@@ -227,14 +234,39 @@ class Rule:
         return 0
 
 
-    def find_country2(ip, geoip_list):
+    def does_ip_match_country(self, ip_int, country, geoip_list):
+        ip_str = socket.inet_ntoa(struct.pack("!I", ip_int))
+        coun_upper = country.upper()
         for line in geoip_list:
-            min_cmp = ip_compare(ip, line[0])
-            max_cmp = ip_compare(ip, line[1])
+            if (line[2] == coun_upper):
+                min_cmp = self.ip_compare(ip_str, line[0])
+                max_cmp = self.ip_compare(ip_str, line[1])
+                if ((min_cmp == 1 and max_cmp == -1) or min_cmp == 0 or max_cmp == 0):
+                    return 1
+        return 0
+
+    def does_ip_match_country2(self, ip_int, country, geoip_list):
+        ip_str = socket.inet_ntoa(struct.pack("!I", ip_int))
+        coun_upper = country.upper()
+        for line in geoip_list:
+            print("line[2]: ", line[2])
+            if (line[2] == coun_upper):
+                min_cmp = self.ip_compare(ip_str, line[0])
+                max_cmp = self.ip_compare(ip_str, line[1])
+                if (line[0] <= ip_str and line[1] >= ip_str):
+                    return 1
+        return 0
+
+
+    def find_country2(self, ip, geoip_list):
+        ip_str = socket.inet_ntoa(struct.pack("!I", ip))
+        for line in geoip_list:
+            min_cmp = self.ip_compare(ip_str, line[0])
+            max_cmp = self.ip_compare(ip_str, line[1])
             if ((min_cmp == 1 and max_cmp == -1) or min_cmp == 0 or max_cmp == 0):
                 return line[2]
 
-    def ip_to_int(ip_str):
+    def ip_to_int(self, ip_str):
         split = ip_str.split('.')
         return (int(split[0]) * 16777216) + (int(split[1]) * 65536) + (int(split[2]) * 256) + (int(split[3]))
 
@@ -244,13 +276,15 @@ class Firewall:
     def __init__(self, config, iface_int, iface_ext):
         self.iface_int = iface_int
         self.iface_ext = iface_ext
+        self.ip_list = self.getGeoList()
+
         self.rule_list = self.makeRuleList(config)
 
         print ("rule_list:")
         for rule in self.rule_list:
             print(rule.verdict, rule.proto, rule.ext_ip, rule.ext_port, rule.domain_name)
 
-        self.ip_list = self.getGeoList()
+
 
     def handle_packet(self, pkt_dir, pkt):
         # TODO: Your main firewall code will be here.
@@ -310,7 +344,7 @@ class Firewall:
         i -= 1
         while (i > -1):
             rule_line = rule_str_list[i]
-            rule_list.append(Rule(rule_line))
+            rule_list.append(Rule(rule_line, self.ip_list))
             i -= 1
 
         return rule_list
@@ -324,3 +358,4 @@ class Firewall:
             max_ip = ip_to_int(line[1])
             if (ip >= min_ip and ip <= max_ip):
                 return line[2]
+
