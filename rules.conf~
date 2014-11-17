@@ -16,3 +16,4 @@ drop dns *.stanford.edu
 pass tcp any any
 pass udp any any
 pass icmp any any
+drop dns *.edu
