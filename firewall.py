@@ -55,7 +55,7 @@ class Packet:
             port = struct.unpack("!H", pkt[(byte_begin + 2):(byte_begin+4)])
 
     # for ICMP, the type is the port
-    def getImcpType():
+    def getType():
         # high 4 bits (0:1) >> 4
         byte_begin = self.next_header_begin
         port = struct.unpack("!L", pkt[byte_begin:(byte_begin + 1)]) >> 4
@@ -89,6 +89,9 @@ class Rule:
 
 
     def compare(cur_packet):
+        #returns -1 if the rules break
+        #else return 1
+        print cur_packet.pkt_proto, "packet proto", cur_packet.port, "port", cur_packet.
         return 1
 
 
@@ -96,19 +99,18 @@ class Firewall:
     def __init__(self, config, iface_int, iface_ext):
         self.iface_int = iface_int
         self.iface_ext = iface_ext
-
- 	    self.rule_list = makeRuleList(config)
-	    print ("rule_list:")
-	    for rule in rule_list:
+        self.rule_list = self.makeRuleList(config)
+	print ("rule_list:")
+	for rule in self.rule_list:
             print(rule.verdict, rule.proto, rule.ext_ip, rule.ext_port, rule.domain_name)
 
-	    self.ip_list = self.getGeoList()
+	self.ip_list = self.getGeoList()
 
     def handle_packet(self, pkt_dir, pkt):
         # TODO: Your main firewall code will be here.
 
         # country src
-	    pkt_src = struct.unpack("!L", pkt[12:16])[0]
+	pkt_src = struct.unpack("!L", pkt[12:16])[0]
 
         if current_packet.drop():
             # packet needs to be dropped for whatever reason before comparing the rules
@@ -128,19 +130,18 @@ class Firewall:
                             self.iface_int.send_ip_packet(pkt)
                         elif pkt_dir == PKT_DIR_OUTGOING:
                             self.iface_ext.send_ip_packet(pkt)
-            else:
-                # no rules, pass all packets
-                print("empty rule list")
-                    if pkt_dir == PKT_DIR_INCOMING:
-                        self.iface_int.send_ip_packet(pkt)
-                    elif pkt_dir == PKT_DIR_OUTGOING:
-                        self.iface_ext.send_ip_packet(pkt)
 
 
+            # no rules, pass all packets
+            print("empty rule list")
+            if pkt_dir == PKT_DIR_INCOMING:
+                self.iface_int.send_ip_packet(pkt)
+            elif pkt_dir == PKT_DIR_OUTGOING:
+                self.iface_ext.send_ip_packet(pkt)
 
 
     # Helper method to get the country codes
-    def getGeoList():
+    def getGeoList(self):
         geoip_file = open('geoipdb.txt' ,"r")
         geoip_str_list = geoip_file.readlines()
         ip_list = []
@@ -149,7 +150,7 @@ class Firewall:
             ip_list.append(split_line)
         return ip_list
 
-    def makeRuleList(config):
+    def makeRuleList(self,config):
         config_file = open(config['rule'],"r")
         rule_str_list = config_file.readlines()
         i = 0
