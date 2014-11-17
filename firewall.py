@@ -25,6 +25,14 @@ class Packet:
             #this is where the next header begins
             self.next_header_begin = ip_header_len * 4
 
+	
+	#set external_ip
+        if pkt_dir == PKT_DIR_INCOMING:
+            self.ext_ip = struct.unpack('L!', pkt[12:16])[0]
+        elif pkt_dir == PKT_DIR_OUTGOING:
+            self.ext_ip = struct.unpack('L!', pkt[16:20])[0]
+
+
         #after getting the protocols, get the source and destination ports from the right places
         if (pkt_proto_num == 1):
             self.pkt_proto = "icmp"
