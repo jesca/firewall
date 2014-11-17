@@ -187,12 +187,13 @@ class Rule:
 		ip2_split = ip2.split('.')
 		i = 0
 		while (i < len(ip1_split)):
-		    ip1_curNum = ip1_split[i]
-		    ip2_curNum = ip2_split[i]
-		    if (ip1_curNum > ip2_curNum):
-			return 1
-		    elif (ip1_curNum < ip2_curNum):
-			return -1
+			ip1_curNum = ip1_split[i]
+		    	ip2_curNum = ip2_split[i]
+		    	if (ip1_curNum > ip2_curNum):
+				return 1
+		    	elif (ip1_curNum < ip2_curNum):
+				return -1
+			i += 1
 
 		return 0
 
