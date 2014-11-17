@@ -19,6 +19,7 @@ class Packet:
 
 
         #last four bits of first byte
+        #ord(a)???
         ip_header_len =  struct.unpack("!B", pkt[0:1])[0] & 0x0F
         if ip_header_len < 5:
             drop_pkt = true
@@ -30,6 +31,7 @@ class Packet:
 
 
       #set external_ip
+
         if pkt_dir == PKT_DIR_INCOMING:
             self.ext_ip = struct.unpack('!L', pkt[12:16])[0]
         elif pkt_dir == PKT_DIR_OUTGOING:
@@ -121,6 +123,7 @@ class Rule:
                 byte_dns_begin = cur_packet.next_header_begin + 8
                 byte_dns_header_ends = cur_packet.next_header_begin + 8 + 12
                 #examine qd count in header
+                #qd_count = struct.unpack("!B", cur_packet.pkt[(byte_dns_begin + 4):(byte_dns_begin + 5)])[0]
                 qd_count = struct.unpack("!H", cur_packet.pkt[(byte_dns_begin + 4):(byte_dns_begin + 6)])[0]
 
                 print("qd_count: ", qd_count)
@@ -137,7 +140,7 @@ class Rule:
                     print
 
                     #You apply DNS rules only for DNS query packets
-
+                    #dns_rule = False
                     byte_dns_begin = cur_packet.next_header_begin + 8
                     byte_dns_header_ends = cur_packet.next_header_begin + 8 + 12
                     # It is an outgoing UDP packet with destination port 53
@@ -168,6 +171,8 @@ class Rule:
 
                     print ("index diff: ", index_diff)
 
+                    #assuming the qtype is 2 bits away ... there may be a bug here
+                    #qtype = struct.unpack("!H", cur_packet.pkt[(byte_dns_header_ends + 2):(byte_dns_header_ends+4)])[0]
                     qtype = struct.unpack("!H", cur_packet.pkt[(qname_index + 1):(qname_index + 3)])[0]
 
                     print("qtype: ", qtype)
@@ -179,6 +184,7 @@ class Rule:
 
                         if qclass == 1:
                             # apply dns rules to this packet
+                            #dns_rule = True
 
                             matching = False
 
@@ -187,6 +193,7 @@ class Rule:
                             if (self.domain_name == 'any' or self.domain_name == 'any\n'):
                                 matching = True
                             else :
+
 
                                 if ('\n' in self.domain_name):
                                     self.domain_name = self.domain_name[:-1]
@@ -215,7 +222,15 @@ class Rule:
 
 
 
+            #if (cur_packet.pkt_dir == 'outgoing' and cur_packet.port == 53):
+
+
             return 0
+
+            #if (dns_rule == False):
+            #    return 0
+            #else:
+            #    pass#criteria met, do domain name compare here!!!!
 
 
         else:
@@ -251,6 +266,10 @@ class Rule:
             print 'rule port is any'
             return 1
 
+        #shouldn't reach here because compare should have returned by now
+        #if (packet_port == 'other'):
+            #not tcp, imcp, or udp, just pass it
+        #    return 1
         elif (rule_port.find('-') == -1):
             # single value
             if (rule_port == packet_port):
@@ -275,7 +294,7 @@ class Rule:
             return 1
         elif (len(rule_ip) == 2):
             #country code
-            return self.does_ip_match_country(packet_ip, rule_ip, self.geoip_list)
+            return self.does_ip_match_country2(packet_ip, rule_ip, self.geoip_list)
         elif (slash_position != -1):
             #range of packets
             print("range mode")
@@ -324,16 +343,37 @@ class Rule:
 
         return 0
 
-
-
     def does_ip_match_country(self, ip_int, country, geoip_list):
+        ip_str = socket.inet_ntoa(struct.pack("!I", ip_int))
+        coun_upper = country.upper()
+
+        for line in geoip_list:
+            if (line[2] == coun_upper):
+                min_cmp = self.ip_compare(ip_str, line[0])
+                max_cmp = self.ip_compare(ip_str, line[1])
+                if ((min_cmp == 1 and max_cmp == -1) or min_cmp == 0 or max_cmp == 0):
+                    return 1
+        return 0
+
+    def does_ip_match_country2(self, ip_int, country, geoip_list):
         ip_str = socket.inet_ntoa(struct.pack("!I", ip_int))
         coun_upper = country.upper()
         for line in geoip_list:
             if (line[2][0] == coun_upper[0] and line[2][1] == coun_upper[1]):
+                #print("line[2]: ", line[2])
+                #min_cmp = self.ip_compare(ip_str, line[0])
+                #max_cmp = self.ip_compare(ip_str, line[1])
                 if (line[0] <= ip_str and line[1] >= ip_str):
                     return 1
         return 0
+
+    def find_country2(ip, geoip_list):
+        ip_str = socket.inet_ntoa(struct.pack("!I", ip))
+        for line in geoip_list:
+            min_cmp = ip_compare(ip, line[0])
+            max_cmp = ip_compare(ip, line[1])
+            if ((min_cmp == 1 and max_cmp == -1) or min_cmp == 0 or max_cmp == 0):
+                return line[2]
 
     def ip_to_int(self, ip_str):
         split = ip_str.split('.')
@@ -419,4 +459,13 @@ class Firewall:
 
         return rule_list
 
+
+
+    def find_country(ip, geoip_list):
+        for line in geoip_list:
+            print(line)
+            min_ip = ip_to_int(line[0])
+            max_ip = ip_to_int(line[1])
+            if (ip >= min_ip and ip <= max_ip):
+                return line[2]
 
