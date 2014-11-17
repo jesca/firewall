@@ -122,7 +122,15 @@ class Rule:
             if rule_port == packet_port:
                 return 1
         elif (rule_port.find('-') != -1):
-            #check for range
+            #range of ports
+            nums = rule_port.split('-')
+            if (packet_port>=nums[0] and packet_port <= nums[1]):
+                # packet_port in between the rule_port, inclusive
+                return 1
+            else:
+                return -1
+        else:
+            print "port_compare error, unrecognizable rule port type"
 
 
 
