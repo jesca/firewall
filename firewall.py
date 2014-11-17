@@ -114,21 +114,22 @@ class Rule:
             "other type of packet we aren't dealing with"
             return 1
 
-        #if (self.proto == 'dns'):
         if (self.proto == 'dns'):
-            if (cur_packet.pkt_dir == 'outgoing' and cur_packet.port == 53):
+            if (cur_packet.pkt_dir == PKT_DIR_OUTGOING and cur_packet.port == 53):
+
+                print("OUTGOING DNS AND PORT 53 YOU GUYS")
 
                 #dns information after ipv4 header and udp header = ~20 bytes + 8 bytes
                 byte_dns_begin = cur_packet.next_header_begin + 8
                 byte_dns_header_ends = cur_packet.next_header_begin + 8 + 12
                 #examine qd count in header
-                qd_count = struct.unpack("!B", pkt[(byte_dns_begin + 4):(byte_dns_begin + 5)])[0]
+                qd_count = struct.unpack("!B", cur_packet.pkt[(byte_dns_begin + 4):(byte_dns_begin + 5)])[0]
 
                 if (qd_count == 1):
                     #assuming the qtype is 2 bits away ... there may be a bug here
-                    qtype = struct.unpack("!H", pkt[(byte_dns_header_ends + 2):(byte_dns_header_ends+4)])[0]
+                    qtype = struct.unpack("!H", cur_packet.pkt[(byte_dns_header_ends + 2):(byte_dns_header_ends+4)])[0]
                     if (qtype == 1 or qtype == 28):
-                        qclass = struct.unpack("!H", pkt[(byte_dns_header_ends + 4):(byte_dns_header_ends+6)])[0]
+                        qclass = struct.unpack("!H", cur_packet.pkt[(byte_dns_header_ends + 4):(byte_dns_header_ends+6)])[0]
                         if qclass == 1:
                             # apply dns rules to this packet
                             #dns_rule = True
