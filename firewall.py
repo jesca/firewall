@@ -184,8 +184,9 @@ class Rule:
         elif (len(rule_ip) == 2):
             #country code
             print ("checking if country matches: ", rule_ip)
-            print("survey says: ", self.does_ip_match_country(packet_ip, rule_ip, self.geoip_list))
-            return self.does_ip_match_country(packet_ip, rule_ip, self.geoip_list)
+            print ("packet ip: ", socket.inet_ntoa(struct.pack("!I", packet_ip)))
+            print("survey says: ", self.does_ip_match_country2(packet_ip, rule_ip, self.geoip_list))
+            return self.does_ip_match_country2(packet_ip, rule_ip, self.geoip_list)
         elif (slash_position != -1):
             #range of packets
             print("range mode")
@@ -241,6 +242,17 @@ class Rule:
                 min_cmp = self.ip_compare(ip_str, line[0])
                 max_cmp = self.ip_compare(ip_str, line[1])
                 if ((min_cmp == 1 and max_cmp == -1) or min_cmp == 0 or max_cmp == 0):
+                    return 1
+        return 0
+
+    def does_ip_match_country2(self, ip_int, country, geoip_list):
+        ip_str = socket.inet_ntoa(struct.pack("!I", ip_int))
+        coun_upper = country.upper()
+        for line in geoip_list:
+            if (line[2] == coun_upper):
+                min_cmp = self.ip_compare(ip_str, line[0])
+                max_cmp = self.ip_compare(ip_str, line[1])
+                if (line[0] <= ip_str and line[1] >= ip_str):
                     return 1
         return 0
 
