@@ -123,11 +123,56 @@ class Rule:
                 byte_dns_begin = cur_packet.next_header_begin + 8
                 byte_dns_header_ends = cur_packet.next_header_begin + 8 + 12
                 #examine qd count in header
-                qd_count = struct.unpack("!B", cur_packet.pkt[(byte_dns_begin + 4):(byte_dns_begin + 5)])[0]
+                #qd_count = struct.unpack("!B", cur_packet.pkt[(byte_dns_begin + 4):(byte_dns_begin + 5)])[0]
+                qd_count = struct.unpack("!H", cur_packet.pkt[(byte_dns_begin + 4):(byte_dns_begin + 6)])[0]
+
+                print("qd_count: ", qd_count)
 
                 if (qd_count == 1):
+
+                    print("QD_COUNT = 1 YOU GUYS")
+                    print
+                    print
+                    print
+                    print
+                    print
+                    print
+                    print
+
+                    #You apply DNS rules only for DNS query packets
+                    #dns_rule = False
+                    byte_dns_begin = cur_packet.next_header_begin + 8
+                    byte_dns_header_ends = cur_packet.next_header_begin + 8 + 12
+                    # It is an outgoing UDP packet with destination port 53
+                    print "dns pkt_dir: ", cur_packet.pkt_dir, 'port: ', cur_packet.port
+                    qd_count = struct.unpack("!B", cur_packet.pkt[(byte_dns_begin + 4):(byte_dns_begin + 5)])[0]
+                    print 'got qd count: ', qd_count
+                    print 'packet label thing'
+                    qname_index = byte_dns_header_ends
+                    qname_i_holder = qname_index
+                    print ord(cur_packet.pkt[qname_index])
+                    result_str = ""
+                    punct_countdown = ord(cur_packet.pkt[qname_index])
+                    qname_index += 1
+                    while ord(cur_packet.pkt[qname_index])!= 00:
+
+                        if (punct_countdown != 0):
+                            print ord(cur_packet.pkt[qname_index])
+                            result_str += chr(ord(cur_packet.pkt[qname_index]))
+                        else:
+                            result_str += '.'
+                            punct_countdown = ord(cur_packet.pkt[qname_index]) + 1
+                        qname_index += 1
+                        punct_countdown -= 1
+
+                    print ("restult_str: ", result_str)
+
                     #assuming the qtype is 2 bits away ... there may be a bug here
-                    qtype = struct.unpack("!H", cur_packet.pkt[(byte_dns_header_ends + 2):(byte_dns_header_ends+4)])[0]
+                    #qtype = struct.unpack("!H", cur_packet.pkt[(byte_dns_header_ends + 2):(byte_dns_header_ends+4)])[0]
+                    qtype = struct.unpack("!H", cur_packet.pkt[(qname_index + 2):(qname_index + 4)])[0]
+
+                    print("qtype: ", qtype)
+
                     if (qtype == 1 or qtype == 28):
                         qclass = struct.unpack("!H", cur_packet.pkt[(byte_dns_header_ends + 4):(byte_dns_header_ends+6)])[0]
                         if qclass == 1:
@@ -140,32 +185,8 @@ class Rule:
                             else :
 
 
-                                #You apply DNS rules only for DNS query packets
-                                #dns_rule = False
-                                byte_dns_begin = cur_packet.next_header_begin + 8
-                                byte_dns_header_ends = cur_packet.next_header_begin + 8 + 12
-                                # It is an outgoing UDP packet with destination port 53
-                                print "dns pkt_dir: ", cur_packet.pkt_dir, 'port: ', cur_packet.port
-                                qd_count = struct.unpack("!B", cur_packet.pkt[(byte_dns_begin + 4):(byte_dns_begin + 5)])[0]
-                                print 'got qd count: ', qd_count
-                                print 'packet label thing'
-                                qname_index = byte_dns_header_ends
-                                print ord(cur_packet.pkt[qname_index])
-                                result_str = ""
-                                punct_countdown = ord(cur_packet.pkt[qname_index])
-                                qname_index += 1
-                                while ord(cur_packet.pkt[qname_index])!= 00:
 
-                                    if (punct_countdown != 0):
-                                        print ord(cur_packet.pkt[qname_index])
-                                        result_str += chr(ord(cur_packet.pkt[qname_index]))
-                                    else:
-                                        result_str += '.'
-                                        punct_countdown = ord(cur_packet.pkt[qname_index]) + 1
-                                    qname_index += 1
-                                    punct_countdown -= 1
 
-                                print ("restult_str: ", result_str)
 
                                 if ('\n' in self.domain_name):
                                     self.domain_name = self.domain_name[:-1]
