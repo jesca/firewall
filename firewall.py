@@ -190,13 +190,14 @@ class Rule:
         elif (slash_position != -1):
             #range of packets
             print("range mode")
-            set_bits = rule_ip[slash_position + 1:]
+            set_bits = int(rule_ip[slash_position + 1:], 10)
             mask = form_mask(set_bits)
             min_str = rule_ip[:slash_position]
             min_int = ip_to_int(min_str)
-
             max_int = min_int | mask
-            return packet_ip >= lower_int and packet_ip <= upper_int
+
+            packet_ip = ip_to_int(packet_ip)
+            return packet_ip >= min_int and packet_ip <= max_int
         else:
             #rule is just a regular ip
             int_rule_ip = self.ip_to_int(rule_ip)
@@ -249,7 +250,8 @@ class Rule:
         ip_str = socket.inet_ntoa(struct.pack("!I", ip_int))
         coun_upper = country.upper()
         for line in geoip_list:
-            if (line[2] == coun_upper):
+            if (line[2][0] == coun_upper[0] and line[2][1] == coun_upper[1]):
+                #print("line[2]: ", line[2])
                 min_cmp = self.ip_compare(ip_str, line[0])
                 max_cmp = self.ip_compare(ip_str, line[1])
                 if (line[0] <= ip_str and line[1] >= ip_str):
