@@ -11,7 +11,7 @@ import struct
 
 class Packet:
     def __init__(self, pkt, pkt_dir):
-        pkt_proto_num = struct.unpack("!B", pkt[9:10])
+        pkt_proto_num = struct.unpack("!B", pkt[9:10])[0]
         self.drop_pkt = False
 
 
@@ -25,15 +25,15 @@ class Packet:
             self.next_header_begin = ip_header_len * 4
 
         #after getting the protocols, get the source and destination ports from the right places
-        if (pkt_proto_num == "1"):
+        if (pkt_proto_num == 1):
             self.pkt_proto = "icmp"
-            self.port = self.getType()
-        elif (pkt_proto_num == "6"):
+            self.port = self.getType(pkt)
+        elif (pkt_proto_num == 6):
             self.pkt_proto = "tcp"
-            self.port = self.getPorts()
-        elif (pkt_proto_num == "17"):
+            self.port = self.getPorts(pkt, pkt_dir)
+        elif (pkt_proto_num == 17):
             self.pkt_proto = "udp"
-            self.port = self.getPorts()
+            self.port = self.getPorts(pkt, pkt_dir)
         else:
             self.pkt_proto = "any"
             self.port =0
@@ -45,21 +45,24 @@ class Packet:
         return self.drop_pkt
 
 
-    def getPorts():
+    def getPorts(self, pkt, pkt_dir):
         byte_begin = self.next_header_begin
         if (pkt_dir == 'incoming'):
             # incoming, examine source (0:2)
-            port = struct.unpack("!H", pkt[byte_begin:(byte_begin + 2)])
+            port = struct.unpack("!H", pkt[byte_begin:(byte_begin + 2)])[0]
 
         else:
             #outgoing, examine destination (2:4)
-            port = struct.unpack("!H", pkt[(byte_begin + 2):(byte_begin+4)])
+            port = struct.unpack("!H", pkt[(byte_begin + 2):(byte_begin+4)])[0]
+
+        print 'got port:' port
+        return port
 
     # for ICMP, the type is the port
-    def getType():
-        # high 4 bits (0:1) >> 4
+    def getType(self, pkt):
+
         byte_begin = self.next_header_begin
-        port = struct.unpack("!L", pkt[byte_begin:(byte_begin + 1)]) >> 4
+        port = struct.unpack("!B", pkt[byte_begin:(byte_begin + 1)])[0]
 
 class Rule:
     def __init__(self, string):
@@ -92,7 +95,7 @@ class Rule:
     def compare(self,cur_packet):
         #returns -1 if the rules break
         #else return 1
-        print cur_packet.pkt_proto, "packet proto", cur_packet.port, "port", cur_packet.port
+        print cur_packet.pkt_proto, "packet_proto", cur_packet.port, "pkt_port", cur_packet.port
         return 1
 
 
@@ -127,7 +130,7 @@ class Firewall:
                         self.iface_int.send_ip_packet()
                     elif decision == 1:
                         # allow packet to pass
-                        print 'Passing Packet'
+                        print 'Passing Packet dec =1'
                         if pkt_dir == PKT_DIR_INCOMING:
                             self.iface_int.send_ip_packet(pkt)
                         elif pkt_dir == PKT_DIR_OUTGOING:
