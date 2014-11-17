@@ -13,6 +13,7 @@ class Packet:
     def __init__(self, pkt, pkt_dir):
         pkt_proto_num = struct.unpack("!B", pkt[9:10])[0]
         self.drop_pkt = False
+        self.pkt_dir = pkt_dir
 
 
         #last four bits of first byte
@@ -118,6 +119,42 @@ class Rule:
             "other type of packet we aren't dealing with"
             return 1
 
+        if (self.proto == 'dns'):
+            #You apply DNS rules only for DNS query packets
+            dns_rule = False
+            # It is an outgoing UDP packet with destination port 53
+            print "dns..."
+            if (current_packet.pkt_dir == 'outgoing' and current_packet.port == 53):
+                """ It has exactly one DNS question entry.
+                ○ There may be other non­empty sections (Answer, Authority, and Additional)
+                ● The query type of the entry is either A or AAAA (QTYPE == 1 or QTYPE == 28), and
+                ● The class of the entry is Internet (QCLASS == 1).
+                """
+
+                #dns information after ipv4 header and udp header = ~20 bytes + 8 bytes
+                byte_dns_begin = cur_packet.next_header_begin + 8
+                byte_dns_header_ends = cur_packet.next_header_begin + 8 + 12
+                #examine qd count in header
+                qd_count = struct.unpack("!B", pkt[(byte_dns_begin + 4):(byte_dns_begin + 5)])[0]
+                print 'got qd count: ', qd_count
+                if (qd_count == 1):
+                      #assuming the qtype is 2 bits away ... there may be a bug here
+                      qtype = struct.unpack("!H", pkt[(byte_dns_header_ends + 2):(byte_dns_header_ends+4)])[0]
+                      if (qtype == 1 or qtype == 28):
+                          qclass = struct.unpack("!H", pkt[(byte_dns_header_ends + 4):(byte_dns_header_ends+6)])[0]
+                          if qclass == 1:
+                              # apply dns rules to this packet
+                              dns_rule = True
+
+            if (dns_rule == True):
+                #criteria met, do the dns thing
+                
+
+
+
+
+
+
         else:
             compare_array = []
             if (self.proto == cur_packet.pkt_proto):
@@ -142,6 +179,8 @@ class Rule:
                     #pass if rest of the rules match
                     return 1
             # didn't match the entire rule, doesn't apply, move on to next rule
+
+
             return 0
 
 
@@ -263,6 +302,7 @@ class Firewall:
                 for rule in self.rule_list:
                     print "rule", i
                     i +=1
+
                     decision = rule.compare(current_packet)
                     if decision == 1:
                         # allow packet to pass
