@@ -128,7 +128,6 @@ class Rule:
             while ord(cur_packet.pkt[qname_index])!= 00:
 
                print ord(cur_packet.pkt[qname_index])
-
                qname_index += 1
 
 
