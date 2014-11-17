@@ -26,11 +26,14 @@ class Packet:
             self.next_header_begin = ip_header_len * 4
 
 
-    #set external_ip
+
+    	#set external_ip
+
         if pkt_dir == PKT_DIR_INCOMING:
             self.ext_ip = struct.unpack('!L', pkt[12:16])[0]
         elif pkt_dir == PKT_DIR_OUTGOING:
             self.ext_ip = struct.unpack('!L', pkt[16:20])[0]
+
 
         print ("ext_ip:", self.ext_ip)
 
@@ -106,8 +109,8 @@ class Rule:
         #returns -1 to drop
         #else return 1 go pass
 
-        print cur_packet.pkt_proto, "packet_proto", cur_packet.port, "pkt_port"
-        print 'rule proto: ', self.proto
+        print 'packet_proto:', cur_packet.pkt_proto, ' packet_ip: ', cur_packet.ext_ip, ' packet_port: ',  cur_packet.port
+        print 'rule_proto:', self.proto, 'rule_ip', self.ext_ip, ' rule_port:', self.ext_port
         #if packet protocol is not tcp, icmp, or udp, just pass
         if (cur_packet.pkt_proto == 'any'):
             return 1
@@ -143,6 +146,7 @@ class Rule:
                 return -1
         else:
             print "port_compare error, unrecognizable rule port type"
+
 
 
 
@@ -212,11 +216,13 @@ class Rule:
         return (int(split[0]) * 16777216) + (int(split[1]) * 65536) + (int(split[2]) * 256) + (int(split[3]))
 
 
+
 class Firewall:
     def __init__(self, config, iface_int, iface_ext):
         self.iface_int = iface_int
         self.iface_ext = iface_ext
         self.rule_list = self.makeRuleList(config)
+
         print ("rule_list:")
         for rule in self.rule_list:
             print(rule.verdict, rule.proto, rule.ext_ip, rule.ext_port, rule.domain_name)
@@ -226,6 +232,7 @@ class Firewall:
     def handle_packet(self, pkt_dir, pkt):
         # TODO: Your main firewall code will be here.
         current_packet = Packet(pkt, pkt_dir)
+
         if not current_packet.drop():
             # compare packet details to the rules
             if (len(self.rule_list) > 0):
@@ -291,6 +298,4 @@ class Firewall:
             max_ip = ip_to_int(line[1])
             if (ip >= min_ip and ip <= max_ip):
                 return line[2]
-
-
 
