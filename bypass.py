@@ -12,14 +12,16 @@ class Firewall:
         self.iface_ext = iface_ext
 
         print 'bypass mode!'
-        
+
     def handle_packet(self, pkt_dir, pkt):
         # The example code here prints out the source/destination IP addresses,
         # which is unnecessary for your submission.
         src_ip = pkt[12:16]
+        #To convert a 4­byte binary data into an IPv4 address string
         dst_ip = pkt[16:20]
         ipid, = struct.unpack('!H', pkt[4:6])    # IP identifier (big endian)
-        
+        print pkt[0:2], "zero to two"
+
         if pkt_dir == PKT_DIR_INCOMING:
             dir_str = 'incoming'
         else:
