@@ -195,9 +195,6 @@ class Rule:
                             else :
 
 
-
-
-
                                 if ('\n' in self.domain_name):
                                     self.domain_name = self.domain_name[:-1]
 
@@ -206,7 +203,10 @@ class Rule:
                                 if (astk_pos != -1):
                                     matching = result_str.find(self.domain_name[1:]) != -1
                                 else:
-                                    matching = result.str == self.domain_name
+                                    if ('www.' in result_str):
+                                        matching = result_str[4:] == self.domain_name
+                                    else:
+                                        matching = result_str == self.domain_name
 
                             if (matching):
                                 if (self.verdict == 'drop'):
