@@ -26,13 +26,16 @@ class Packet:
             self.next_header_begin = ip_header_len * 4
 
 
-	#set external_ip
+
+      #set external_ip
+
         if pkt_dir == PKT_DIR_INCOMING:
             self.ext_ip = struct.unpack('!L', pkt[12:16])[0]
         elif pkt_dir == PKT_DIR_OUTGOING:
             self.ext_ip = struct.unpack('!L', pkt[16:20])[0]
 
-	print ("ext_ip:", self.ext_ip)
+
+        print ("ext_ip:", self.ext_ip)
 
 
         #after getting the protocols, get the source and destination ports from the right places
@@ -47,7 +50,8 @@ class Packet:
             self.port = self.getPorts(pkt, pkt_dir)
         else:
             self.pkt_proto = "any"
-            self.port =0
+            #it doesn't matter what the port is if the pkt_proto is 'any'
+            self.port = 0
             # just pass this
 
 
@@ -106,26 +110,44 @@ class Rule:
         #returns -1 to drop
         #else return 1 go pass
 
+        #check port, ext port, ext ip address
+
         print 'packet_proto:', cur_packet.pkt_proto, ' packet_ip: ', cur_packet.ext_ip, ' packet_port: ',  cur_packet.port
         print 'rule_proto:', self.proto, 'rule_ip', self.ext_ip, ' rule_port:', self.ext_port
         #if packet protocol is not tcp, icmp, or udp, just pass
+
+        #pass the packet if the current packet proto is any
         if (cur_packet.pkt_proto == 'any'):
             return 1
+
         else:
-            #missing external ip check
-            if (self.proto == cur_packet.pkt_proto) and (self.port_compare(self.ext_port,cur_packet.port)==1):
+            compare_array = []
+            if (self.proto == cur_packet.pkt_proto):
+                print 'protos same'
+                compare_array.append(1)
+            if self.port_compare(self.ext_port, cur_packet.port):
+                print 'ports same'
+                compare_array.append(1)
+            if self.ext_ip_compare(self.ext_ip, cur_packet.ext_ip):
+                print 'ext same'
+                compare_array.append(1)
+
+            print "heres the compare_array", compare_array
+            if (len(compare_array) == 3):
+                # rule match!
                 if (self.verdict == 'drop'):
                     print 'everything matched, verdict drop'
                     #drop if rest of the rules match
                     return -1
                 elif (self.verdict == 'pass'):
-                    print 'passing packet'
+                    print 'everything matched, verdict pass'
                     #pass if rest of the rules match
                     return 1
-        return 1
+            # didn't match the entire rule, doesn't apply, move on to next rule
+            return 0
+
 
     def port_compare(self,rule_port, packet_port):
-
         if (rule_port == 'any'):
             return 1
         elif (rule_port.find('-') == -1):
@@ -145,70 +167,72 @@ class Rule:
 
 
 
-	def ext_ip_compare(self, rule_ip, packet_ip):
-		slash_position = rule_ip.find('/')
-		if (rule_ip == 'any'):
-			return 1
-		elif (rule_ip.isupper() and len(rule_ip) == 2):
-			#country code
-			return find_country2(packet_ip) == rule_ip
-		elif (slash_position != -1):
-			#range of packets
-			print("range mode")
-			set_bits = rule_ip[slash_position + 1:]
-			mask = form_mask(set_bits)
-			min_str = rule_ip[:slash_position]
-			min_int = ip_to_int(min_str)
 
-			max_int = min_int | mask
-			return packet_ip >= lower_int and packet_ip <= upper_int
-		else:
-			#rule is just a regular ip
-			int_rule_ip = ip_to_int(rule_ip)
-			return int_rule_ip == packet_ip
+    def ext_ip_compare(self, rule_ip, packet_ip):
+        slash_position = rule_ip.find('/')
+        if (rule_ip == 'any'):
+            return 1
+        elif (rule_ip.isupper() and len(rule_ip) == 2):
+            #country code
+            return find_country2(packet_ip) == rule_ip.upper()
+        elif (slash_position != -1):
+            #range of packets
+            print("range mode")
+            set_bits = rule_ip[slash_position + 1:]
+            mask = form_mask(set_bits)
+            min_str = rule_ip[:slash_position]
+            min_int = ip_to_int(min_str)
 
-
-	def form_mask(bits_set):
-	    result = ""
-	    i = 0
-	    while i < 32:
-		if (i < bits_set):
-		    result += "0"
-		else:
-		    result += "1"
-		i += 1
-	    return int(result, 2)
+            max_int = min_int | mask
+            return packet_ip >= lower_int and packet_ip <= upper_int
+        else:
+            #rule is just a regular ip
+            int_rule_ip = ip_to_int(rule_ip)
+            return int_rule_ip == packet_ip
 
 
-
-	#compares two ip values in string format
-	#return 1 if 1st ip is greater, -1 if 2nd ip is greater
-	def ip_compare(ip1, ip2):
-		ip1_split = ip1.split('.')
-		ip2_split = ip2.split('.')
-		i = 0
-		while (i < len(ip1_split)):
-			ip1_curNum = ip1_split[i]
-		    	ip2_curNum = ip2_split[i]
-		    	if (ip1_curNum > ip2_curNum):
-				return 1
-		    	elif (ip1_curNum < ip2_curNum):
-				return -1
-			i += 1
-
-		return 0
+    def form_mask(bits_set):
+        result = ""
+        i = 0
+        while i < 32:
+            if (i < bits_set):
+                result += "0"
+            else:
+                result += "1"
+            i += 1
+        return int(result, 2)
 
 
-	def find_country2(ip, geoip_list):
-		for line in geoip_list:
-		    min_cmp = ip_compare(ip, line[0])
-		    max_cmp = ip_compare(ip, line[1])
-		    if ((min_cmp == 1 and max_cmp == -1) or min_cmp == 0 or max_cmp == 0):
-			return line[2]
 
-	def ip_to_int(ip_str):
-		split = ip_str.split('.')
-		return (int(split[0]) * 16777216) + (int(split[1]) * 65536) + (int(split[2]) * 256) + (int(split[3]))
+    #compares two ip values in string format
+    #return 1 if 1st ip is greater, -1 if 2nd ip is greater
+    def ip_compare(ip1, ip2):
+        ip1_split = ip1.split('.')
+        ip2_split = ip2.split('.')
+        i = 0
+        while (i < len(ip1_split)):
+            ip1_curNum = ip1_split[i]
+            ip2_curNum = ip2_split[i]
+            if (ip1_curNum > ip2_curNum):
+                return 1
+            elif (ip1_curNum < ip2_curNum):
+                return -1
+            i += 1
+
+        return 0
+
+
+    def find_country2(ip, geoip_list):
+        for line in geoip_list:
+            min_cmp = ip_compare(ip, line[0])
+            max_cmp = ip_compare(ip, line[1])
+            if ((min_cmp == 1 and max_cmp == -1) or min_cmp == 0 or max_cmp == 0):
+                return line[2]
+
+    def ip_to_int(ip_str):
+        split = ip_str.split('.')
+        return (int(split[0]) * 16777216) + (int(split[1]) * 65536) + (int(split[2]) * 256) + (int(split[3]))
+
 
 
 class Firewall:
@@ -216,19 +240,24 @@ class Firewall:
         self.iface_int = iface_int
         self.iface_ext = iface_ext
         self.rule_list = self.makeRuleList(config)
-	print ("rule_list:")
-	for rule in self.rule_list:
+
+        print ("rule_list:")
+        for rule in self.rule_list:
             print(rule.verdict, rule.proto, rule.ext_ip, rule.ext_port, rule.domain_name)
 
-	self.ip_list = self.getGeoList()
+        self.ip_list = self.getGeoList()
 
     def handle_packet(self, pkt_dir, pkt):
         # TODO: Your main firewall code will be here.
-	current_packet = Packet(pkt, pkt_dir)
+        current_packet = Packet(pkt, pkt_dir)
+
         if not current_packet.drop():
             # compare packet details to the rules
             if (len(self.rule_list) > 0):
+                i = 0
                 for rule in self.rule_list:
+                    print "rule", i
+                    i +=1
                     decision = rule.compare(current_packet)
                     if decision == 1:
                         # allow packet to pass
@@ -237,7 +266,7 @@ class Firewall:
                             self.iface_int.send_ip_packet(pkt)
                         elif pkt_dir == PKT_DIR_OUTGOING:
                             self.iface_ext.send_ip_packet(pkt)
-                    else:
+                    elif decision == -1:
                         print "handle packet dropping packet because -1"
                         return
 
