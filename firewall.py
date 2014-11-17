@@ -144,7 +144,7 @@ class Rule:
 
 
 
-	def ip_compare(self, rule_ip, packet_ip):
+	def ext_ip_compare(self, rule_ip, packet_ip):
 		slash_position = rule_ip.find('/')
 		if (rule_ip == 'any'):
 			return 1
