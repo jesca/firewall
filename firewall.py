@@ -19,7 +19,6 @@ class Packet:
 
 
         #last four bits of first byte
-        #ord(a)???
         ip_header_len =  struct.unpack("!B", pkt[0:1])[0] & 0x0F
         if ip_header_len < 5:
             drop_pkt = true
@@ -31,7 +30,6 @@ class Packet:
 
 
       #set external_ip
-
         if pkt_dir == PKT_DIR_INCOMING:
             self.ext_ip = struct.unpack('!L', pkt[12:16])[0]
         elif pkt_dir == PKT_DIR_OUTGOING:
@@ -105,8 +103,6 @@ class Rule:
 
 
     def compare(self,cur_packet):
-        print 'packet_proto:', cur_packet.pkt_proto, ' packet_ip: ', cur_packet.ext_ip, ' packet_port: ',  cur_packet.port
-        print 'rule_proto:', self.proto, 'rule_ip', self.ext_ip, ' rule_port:', self.ext_port
         #if packet protocol is not tcp, icmp, or udp, just pass
 
         #pass the packet if the current packet proto is any
@@ -116,45 +112,28 @@ class Rule:
         if (self.proto == 'dns'):
             if (cur_packet.pkt_dir == PKT_DIR_OUTGOING and cur_packet.port == 53):
 
-                print("OUTGOING DNS AND PORT 53 YOU GUYS")
-
                 #dns information after ipv4 header and udp header = ~20 bytes + 8 bytes
                 byte_dns_begin = cur_packet.next_header_begin + 8
                 byte_dns_header_ends = cur_packet.next_header_begin + 8 + 12
                 #examine qd count in header
                 qd_count = struct.unpack("!H", cur_packet.pkt[(byte_dns_begin + 4):(byte_dns_begin + 6)])[0]
 
-                print("qd_count: ", qd_count)
 
                 if (qd_count == 1):
-
-                    print("QD_COUNT = 1 YOU GUYS")
-                    print
-                    print
-                    print
-                    print
-                    print
-                    print
-                    print
 
                     #You apply DNS rules only for DNS query packets
                     byte_dns_begin = cur_packet.next_header_begin + 8
                     byte_dns_header_ends = cur_packet.next_header_begin + 8 + 12
                     # It is an outgoing UDP packet with destination port 53
-                    print "dns pkt_dir: ", cur_packet.pkt_dir, 'port: ', cur_packet.port
                     qd_count = struct.unpack("!B", cur_packet.pkt[(byte_dns_begin + 4):(byte_dns_begin + 5)])[0]
-                    print 'got qd count: ', qd_count
-                    print 'packet label thing'
                     qname_index = byte_dns_header_ends
                     qname_i_holder = qname_index
-                    print ord(cur_packet.pkt[qname_index])
                     result_str = ""
                     punct_countdown = ord(cur_packet.pkt[qname_index])
                     qname_index += 1
                     while ord(cur_packet.pkt[qname_index])!= 00:
 
                         if (punct_countdown != 0):
-                            print ord(cur_packet.pkt[qname_index])
                             result_str += chr(ord(cur_packet.pkt[qname_index]))
                         else:
                             result_str += '.'
@@ -162,28 +141,16 @@ class Rule:
                         qname_index += 1
                         punct_countdown -= 1
 
-                    print ("restult_str: ", result_str)
-
                     index_diff = qname_index - qname_i_holder
-
-                    print ("index diff: ", index_diff)
-
                     qtype = struct.unpack("!H", cur_packet.pkt[(qname_index + 1):(qname_index + 3)])[0]
-
-                    print("qtype: ", qtype)
 
                     if (qtype == 1 or qtype == 28):
                         qclass = struct.unpack("!H", cur_packet.pkt[(qname_index + 3):(qname_index + 5)])[0]
 
-                        print("qclass: ", qclass)
-
                         if qclass == 1:
                             # apply dns rules to this packet
-
                             matching = False
 
-
-                            print("self.domain_name", self.domain_name)
                             if (self.domain_name == 'any' or self.domain_name == 'any\n'):
                                 matching = True
                             else :
@@ -204,17 +171,13 @@ class Rule:
 
                             if (matching):
                                 if (self.verdict == 'drop'):
-                                    print 'everything matched, verdict drop'
                                     #drop if rest of the rules match
                                     return -1
                                 elif (self.verdict == 'pass'):
-                                    print 'everything matched, verdict pass'
                                     #pass if rest of the rules match
                                     return 1
                             else:
                                 return 0
-
-
 
             return 0
 
@@ -223,24 +186,18 @@ class Rule:
         else:
             compare_array = []
             if (self.proto == cur_packet.pkt_proto):
-                print 'protos same'
                 compare_array.append(1)
             if (self.port_compare(self.ext_port,cur_packet.port)==1):
-                print 'ports same'
                 compare_array.append(1)
             if (self.ext_ip_compare(self.ext_ip, cur_packet.ext_ip) == 1):
-                print 'ext same'
                 compare_array.append(1)
 
-            print "heres the compare_array", compare_array
             if (len(compare_array) == 3):
                 # rule match!
                 if (self.verdict == 'drop'):
-                    print 'everything matched, verdict drop'
                     #drop if rest of the rules match
                     return -1
                 elif (self.verdict == 'pass'):
-                    print 'everything matched, verdict pass'
                     #pass if rest of the rules match
                     return 1
             # didn't match the entire rule, doesn't apply, move on to next rule
@@ -248,9 +205,7 @@ class Rule:
 
 
     def port_compare(self,rule_port, packet_port):
-        print 'comparing ports:', packet_port, rule_port
         if (rule_port == 'any' or rule_port == 'any\n'):
-            print 'rule port is any'
             return 1
 
         elif (rule_port.find('-') == -1):
@@ -265,8 +220,6 @@ class Rule:
                 return 1
             else:
                 return -1
-        else:
-            print "port_compare error, unrecognizable rule port type"
 
 
 
@@ -280,7 +233,6 @@ class Rule:
             return self.does_ip_match_country(packet_ip, rule_ip, self.geoip_list)
         elif (slash_position != -1):
             #range of packets
-            print("range mode")
             set_bits = int(rule_ip[slash_position + 1:], 10)
             mask = form_mask(set_bits)
             min_str = rule_ip[:slash_position]
@@ -352,10 +304,6 @@ class Firewall:
 
         self.rule_list = self.makeRuleList(config)
 
-        print ("rule_list:")
-        for rule in self.rule_list:
-            print(rule.verdict, rule.proto, rule.ext_ip, rule.ext_port, rule.domain_name)
-
 
 
     def handle_packet(self, pkt_dir, pkt):
@@ -367,24 +315,20 @@ class Firewall:
             if (len(self.rule_list) > 0):
                 i = 0
                 for rule in self.rule_list:
-                    print "rule", i
                     i +=1
 
                     decision = rule.compare(current_packet)
                     if decision == 1:
                         # allow packet to pass
-                        print 'Passing Packet bc decision 1'
                         if pkt_dir == PKT_DIR_INCOMING:
                             self.iface_int.send_ip_packet(pkt)
                         elif pkt_dir == PKT_DIR_OUTGOING:
                             self.iface_ext.send_ip_packet(pkt)
                     elif decision == -1:
-                        print "handle packet dropping packet because -1"
                         return
 
 
             # doesn't match any rule ... pass
-            print("didn't match anything on rule list")
             if pkt_dir == PKT_DIR_INCOMING:
                 self.iface_int.send_ip_packet(pkt)
             elif pkt_dir == PKT_DIR_OUTGOING:
