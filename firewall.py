@@ -16,6 +16,7 @@ class Packet:
 
 
         #last four bits of first byte
+        #ord(a)???
         ip_header_len =  struct.unpack("!B", pkt[0:1])[0] & 0x0F
         if ip_header_len < 5:
             drop_pkt = true
@@ -77,7 +78,7 @@ class Rule:
 
         #allocate strings to fields
         self.verdict = rule_line[0]
-        self.proto = rule_line[1]
+        self.proto = rule_line[1].lower()
 
         if (self.proto == 'dns'):
             self.ext_ip = None
@@ -95,31 +96,30 @@ class Rule:
         #else return 1 go pass
 
         print cur_packet.pkt_proto, "packet_proto", cur_packet.port, "pkt_port"
-        print 'rule proto: ' self.proto
+        print 'rule proto: ', self.proto
         #if packet protocol is not tcp, icmp, or udp, just pass
         if (cur_packet.pkt_proto == 'any'):
             return 1
         else:
             #missing external ip check
-            if (self.proto == cur_packet.proto) && (self.port_compare(self.port,cur_packet.port)==1):
+            if (self.proto == cur_packet.pkt_proto) and (self.port_compare(self.ext_port,cur_packet.port)==1):
                 if (self.verdict == 'drop'):
-                #drop if rest of the rules match
-                return -1
-            else if (self.verdict == 'pass'):
-                #pass if rest of the rules match
-                return 1
+                    print 'everything matched, verdict drop'
+                    #drop if rest of the rules match
+                    return -1
+                elif (self.verdict == 'pass'):
+                    print 'passing packet'
+                    #pass if rest of the rules match
+                    return 1
         return 1
 
-    def port_compare(rule_port, packet_port):
-        """1. “any”
-        2. a single value
-        3. a range
-        (e.g., 2000-3000)"""
+    def port_compare(self,rule_port, packet_port):
+
         if (rule_port == 'any'):
             return 1
         elif (rule_port.find('-') == -1):
             # single value
-            if rule_port == packet_port:
+            if (rule_port == packet_port):
                 return 1
         elif (rule_port.find('-') != -1):
             #range of ports
@@ -147,29 +147,23 @@ class Firewall:
 
     def handle_packet(self, pkt_dir, pkt):
         # TODO: Your main firewall code will be here.
-
-        # country src
-	    pkt_src = struct.unpack("!L", pkt[12:16])[0]
+        pkt_src = struct.unpack("!L", pkt[12:16])[0]
 	    current_packet = Packet(pkt, pkt_dir)
-
-        if current_packet.drop():
-            # packet needs to be dropped for whatever reason before comparing the rules
-            self.iface_int.send_ip_packet()
-        else:
+        if not current_packet.drop():
             # compare packet details to the rules
             if (len(self.rule_list) > 0):
                 for rule in self.rule_list:
                     decision = rule.compare(current_packet)
-                    if decision == -1:
-                        #packet should be dropped
-                        self.iface_int.send_ip_packet()
-                    elif decision == 1:
+                    if decision == 1:
                         # allow packet to pass
                         print 'Passing Packet bc decision 1'
                         if pkt_dir == PKT_DIR_INCOMING:
                             self.iface_int.send_ip_packet(pkt)
                         elif pkt_dir == PKT_DIR_OUTGOING:
                             self.iface_ext.send_ip_packet(pkt)
+                    else:
+                        print "handle packet dropping packet because -1"
+                        return
 
 
             # doesn't match any rule ... pass
