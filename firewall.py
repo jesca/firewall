@@ -135,45 +135,60 @@ class Rule:
 
 
 	def ip_compare(self, rule_ip, packet_ip):
+		slash_position = rule_ip.find('/')
 		if (rule_ip == 'any'):
 			return 1
 		elif (rule_ip.isupper() and len(rule_ip) == 2):
 			#country code
 			return find_country2(packet_ip) == rule_ip
-		elif (rule_ip.find('/') != -1):
+		elif (slash_position != -1):
 			#range of packets
 			print("range mode")
-
+			set_bits = rule_ip[slash_position + 1:]
+			mask = form_mask(set_bits)
+			min_int = rule_ip[:slash_position]
+			max_int = rule_ip[:slash_position] | mask
+			return packet_ip >= lower_int and packet_ip <= upper_int
 		else:
 			#rule is just a regular ip
 			return rule_ip == packet_ip
 
 
+	def form_mask(bits_set):
+		result = ""
+		i = 0
+		while i < 32:
+			if (i < n):
+				result += 0
+			else:
+				result += 1
+		return result
+			
 
 
 	#compares two ip values in string format
-    #return 1 if 1st ip is greater, -1 if 2nd ip is greater
-    def ip_compare(ip1, ip2):
-        ip1_split = ip1.split('.')
-        ip2_split = ip2.split('.')
-        i = 0
-        while (i < len(ip1_split)):
-            ip1_curNum = ip1_split[i]
-            ip2_curNum = ip2_split[i]
-            if (ip1_curNum > ip2_curNum):
-                return 1
-            elif (ip1_curNum < ip2_curNum):
-                return -1
+	#return 1 if 1st ip is greater, -1 if 2nd ip is greater
+	def ip_compare(ip1, ip2):
+		ip1_split = ip1.split('.')
+		ip2_split = ip2.split('.')
+		i = 0
+		while (i < len(ip1_split)):
+		    ip1_curNum = ip1_split[i]
+		    ip2_curNum = ip2_split[i]
+		    if (ip1_curNum > ip2_curNum):
+			return 1
+		    elif (ip1_curNum < ip2_curNum):
+			return -1
 
-        return 0
+		return 0
 
 
-    def find_country2(ip, geoip_list):
-        for line in geoip_list:
-            min_cmp = ip_compare(ip, line[0])
-            max_cmp = ip_compare(ip, line[1])
-            if ((min_cmp == 1 and max_cmp == -1) or min_cmp == 0 or max_cmp == 0):
-                return line[2]
+	def find_country2(ip, geoip_list):
+		for line in geoip_list:
+		    min_cmp = ip_compare(ip, line[0])
+		    max_cmp = ip_compare(ip, line[1])
+		    if ((min_cmp == 1 and max_cmp == -1) or min_cmp == 0 or max_cmp == 0):
+			return line[2]
 
 
 
