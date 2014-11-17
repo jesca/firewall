@@ -178,15 +178,18 @@ class Rule:
                     print("qtype: ", qtype)
 
                     if (qtype == 1 or qtype == 28):
-                        qclass = struct.unpack("!H", cur_packet.pkt[(byte_dns_header_ends + 3):(byte_dns_header_ends + 5)])[0]
+                        qclass = struct.unpack("!H", cur_packet.pkt[(qname_index + 3):(qname_index + 5)])[0]
 
-                        print("qclass: ", qtype)
+                        print("qclass: ", qclass)
 
                         if qclass == 1:
                             # apply dns rules to this packet
                             #dns_rule = True
 
                             matching = False
+
+
+                            print("self.domain_name", self.domain_name)
                             if (self.domain_name == 'any' or self.domain_name == 'any\n'):
                                 matching = True
                             else :
@@ -201,7 +204,7 @@ class Rule:
                                 astk_pos = self.domain_name.find('*')
 
                                 if (astk_pos != -1):
-                                    matching = result_str.find(self.domain_name) != -1
+                                    matching = result_str.find(self.domain_name[1:]) != -1
                                 else:
                                     matching = result.str == self.domain_name
 
