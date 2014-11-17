@@ -54,8 +54,6 @@ class Packet:
         else:
             #outgoing, examine destination (2:4)
             port = struct.unpack("!H", pkt[(byte_begin + 2):(byte_begin+4)])[0]
-
-        print 'got port:' port
         return port
 
     # for ICMP, the type is the port
@@ -93,10 +91,39 @@ class Rule:
 
 
     def compare(self,cur_packet):
-        #returns -1 if the rules break
-        #else return 1
-        print cur_packet.pkt_proto, "packet_proto", cur_packet.port, "pkt_port", cur_packet.port
+        #returns -1 to drop
+        #else return 1 go pass
+
+        print cur_packet.pkt_proto, "packet_proto", cur_packet.port, "pkt_port"
+        print 'rule proto: ' self.proto
+        #if packet protocol is not tcp, icmp, or udp, just pass
+        if (cur_packet.pkt_proto == 'any'):
+            return 1
+        else:
+            #missing external ip check
+            if (self.proto == cur_packet.proto) && (self.port_compare(self.port,cur_packet.port)==1):
+                if (self.verdict == 'drop'):
+                #drop if rest of the rules match
+                return -1
+            else if (self.verdict == 'pass'):
+                #pass if rest of the rules match
+                return 1
         return 1
+
+    def port_compare(rule_port, packet_port):
+        """1. “any”
+        2. a single value
+        3. a range
+        (e.g., 2000-3000)"""
+        if (rule_port == 'any'):
+            return 1
+        elif (rule_port.find('-') == -1):
+            # single value
+            if rule_port == packet_port:
+                return 1
+        elif (rule_port.find('-') != -1):
+            #check for range
+
 
 
 class Firewall:
@@ -114,8 +141,8 @@ class Firewall:
         # TODO: Your main firewall code will be here.
 
         # country src
-	pkt_src = struct.unpack("!L", pkt[12:16])[0]
-	current_packet = Packet(pkt, pkt_dir)
+	    pkt_src = struct.unpack("!L", pkt[12:16])[0]
+	    current_packet = Packet(pkt, pkt_dir)
 
         if current_packet.drop():
             # packet needs to be dropped for whatever reason before comparing the rules
@@ -130,15 +157,15 @@ class Firewall:
                         self.iface_int.send_ip_packet()
                     elif decision == 1:
                         # allow packet to pass
-                        print 'Passing Packet dec =1'
+                        print 'Passing Packet bc decision 1'
                         if pkt_dir == PKT_DIR_INCOMING:
                             self.iface_int.send_ip_packet(pkt)
                         elif pkt_dir == PKT_DIR_OUTGOING:
                             self.iface_ext.send_ip_packet(pkt)
 
 
-            # no rules, pass all packets
-            print("empty rule list")
+            # doesn't match any rule ... pass
+            print("didn't match anything on rule list")
             if pkt_dir == PKT_DIR_INCOMING:
                 self.iface_int.send_ip_packet(pkt)
             elif pkt_dir == PKT_DIR_OUTGOING:
