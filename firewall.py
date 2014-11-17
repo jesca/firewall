@@ -28,9 +28,11 @@ class Packet:
 	
 	#set external_ip
         if pkt_dir == PKT_DIR_INCOMING:
-            self.ext_ip = struct.unpack('L!', pkt[12:16])[0]
+            self.ext_ip = struct.unpack('!L', pkt[12:16])[0]
         elif pkt_dir == PKT_DIR_OUTGOING:
-            self.ext_ip = struct.unpack('L!', pkt[16:20])[0]
+            self.ext_ip = struct.unpack('!L', pkt[16:20])[0]
+
+	print ("ext_ip:", self.ext_ip)
 
 
         #after getting the protocols, get the source and destination ports from the right places
@@ -154,12 +156,15 @@ class Rule:
 			print("range mode")
 			set_bits = rule_ip[slash_position + 1:]
 			mask = form_mask(set_bits)
-			min_int = rule_ip[:slash_position]
-			max_int = rule_ip[:slash_position] | mask
+			min_str = rule_ip[:slash_position]
+			min_int = ip_to_int(min_str)
+
+			max_int = min_int | mask
 			return packet_ip >= lower_int and packet_ip <= upper_int
 		else:
 			#rule is just a regular ip
-			return rule_ip == packet_ip
+			int_rule_ip = ip_to_int(rule_ip)
+			return int_rule_ip == packet_ip
 
 
 	def form_mask(bits_set):
@@ -198,6 +203,9 @@ class Rule:
 		    if ((min_cmp == 1 and max_cmp == -1) or min_cmp == 0 or max_cmp == 0):
 			return line[2]
 
+	def ip_to_int(ip_str):
+		split = ip_str.split('.')
+		return (int(split[0]) * 16777216) + (int(split[1]) * 65536) + (int(split[2]) * 256) + (int(split[3]))
 
 
 class Firewall:
@@ -271,11 +279,6 @@ class Firewall:
 
         return rule_list
 
-
-
-    def ip_to_int(ip_str):
-        split = ip_str.split('.')
-        return (split[0] * 16777216) + (split[1] * 65536) + (split[2] * 256) + (split[3])
 
 
     def find_country(ip, geoip_list):
