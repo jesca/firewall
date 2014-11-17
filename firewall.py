@@ -105,8 +105,6 @@ class Rule:
 
 
     def compare(self,cur_packet):
-        byte_dns_begin = cur_packet.next_header_begin + 8
-        byte_dns_header_ends = cur_packet.next_header_begin + 8 + 12
         print 'packet_proto:', cur_packet.pkt_proto, ' packet_ip: ', cur_packet.ext_ip, ' packet_port: ',  cur_packet.port
         print 'rule_proto:', self.proto, 'rule_ip', self.ext_ip, ' rule_port:', self.ext_port
         #if packet protocol is not tcp, icmp, or udp, just pass
@@ -120,20 +118,21 @@ class Rule:
             #You apply DNS rules only for DNS query packets
             dns_rule = False
             # It is an outgoing UDP packet with destination port 53
-            print "dns pkt_dir: ", cur_packet.pkt_dir, 'port: ', cur_packet.port
-          qd_count = struct.unpack("!B", cur_packet.pkt[(byte_dns_begin + 4):(byte_dns_begin + 5)])[0]
-            print 'got qd count: ', qd_count
-            print cur_packet.pkt[byte_dns_header_ends:byte_dns_header_ends + 2]
 
 
             if (cur_packet.pkt_dir == 'outgoing' and cur_packet.port == 53):
-
-
                 #dns information after ipv4 header and udp header = ~20 bytes + 8 bytes
                 byte_dns_begin = cur_packet.next_header_begin + 8
                 byte_dns_header_ends = cur_packet.next_header_begin + 8 + 12
                 #examine qd count in header
                 qd_count = struct.unpack("!B", pkt[(byte_dns_begin + 4):(byte_dns_begin + 5)])[0]
+
+                print("~~~~~~~~~~~~~~~~~~~port type: ", type(cur_packet.port))
+                print
+                print
+                print
+                print("qd_count: ", qd_count)
+                return
 
                 if (qd_count == 1):
                       #assuming the qtype is 2 bits away ... there may be a bug here
@@ -147,7 +146,13 @@ class Rule:
             if (dns_rule == False):
                 return 0
             else:
-                pass#criteria met, do domain name compare here!!!!
+                print "dns pkt_dir: ", cur_packet.pkt_dir, 'port: ', cur_packet.port
+                byte_dns_begin = cur_packet.next_header_begin + 8
+                byte_dns_header_ends = cur_packet.next_header_begin + 8 + 12
+                qd_count = struct.unpack("!B", cur_packet.pkt[(byte_dns_begin + 4):(byte_dns_begin + 5)])[0]
+                print cur_packet.pkt[byte_dns_header_ends:byte_dns_header_ends + 2]
+
+
 
 
         else:
@@ -266,6 +271,7 @@ class Rule:
     def does_ip_match_country(self, ip_int, country, geoip_list):
         ip_str = socket.inet_ntoa(struct.pack("!I", ip_int))
         coun_upper = country.upper()
+
         for line in geoip_list:
             if (line[2] == coun_upper):
                 min_cmp = self.ip_compare(ip_str, line[0])

@@ -13,6 +13,6 @@ drop tcp au any
 drop dns   stanford.edu
 drop dns *.stanford.edu
 
-drop icmp any any
-drop tcp any any
-drop udp any any
+pass tcp any any
+pass udp any any
+pass icmp any any
