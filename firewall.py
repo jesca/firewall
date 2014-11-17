@@ -12,6 +12,7 @@ import struct
 class Packet:
     def __init__(self, pkt, pkt_dir):
         pkt_proto_num = struct.unpack("!B", pkt[9:10])[0]
+        self.pkt = pkt
         self.drop_pkt = False
         self.pkt_dir = pkt_dir
 
@@ -39,15 +40,12 @@ class Packet:
         if (pkt_proto_num == 1):
             self.pkt_proto = "icmp"
             self.port = self.getType(pkt)
-            print 'setting port to via type.', self.port
         elif (pkt_proto_num == 6):
             self.pkt_proto = "tcp"
             self.port = self.getPorts(pkt, pkt_dir)
-            print 'setting port to via getport', self.port
         elif (pkt_proto_num == 17):
             self.pkt_proto = "udp"
             self.port = self.getPorts(pkt, pkt_dir)
-            print 'setting port to via getport', self.port
         else:
             self.pkt_proto = "other"
             #it doesn't matter what the port is if the pkt_proto is 'any'
@@ -105,11 +103,8 @@ class Rule:
 
 
     def compare(self,cur_packet):
-        #returns -1 to drop
-        #else return 1 go pass
-
-        #check port, ext port, ext ip address
-
+        byte_dns_begin = cur_packet.next_header_begin + 8
+        byte_dns_header_ends = cur_packet.next_header_begin + 8 + 12
         print 'packet_proto:', cur_packet.pkt_proto, ' packet_ip: ', cur_packet.ext_ip, ' packet_port: ',  cur_packet.port
         print 'rule_proto:', self.proto, 'rule_ip', self.ext_ip, ' rule_port:', self.ext_port
         #if packet protocol is not tcp, icmp, or udp, just pass
@@ -123,20 +118,21 @@ class Rule:
             #You apply DNS rules only for DNS query packets
             dns_rule = False
             # It is an outgoing UDP packet with destination port 53
-            print "dns..."
-            if (current_packet.pkt_dir == 'outgoing' and current_packet.port == 53):
-                """ It has exactly one DNS question entry.
-                ○ There may be other non­empty sections (Answer, Authority, and Additional)
-                ● The query type of the entry is either A or AAAA (QTYPE == 1 or QTYPE == 28), and
-                ● The class of the entry is Internet (QCLASS == 1).
-                """
+            print "dns pkt_dir: ", cur_packet.pkt_dir, 'port: ', cur_packet.port
+          qd_count = struct.unpack("!B", cur_packet.pkt[(byte_dns_begin + 4):(byte_dns_begin + 5)])[0]
+            print 'got qd count: ', qd_count
+            print cur_packet.pkt[byte_dns_header_ends:byte_dns_header_ends + 2]
+
+
+            if (cur_packet.pkt_dir == 'outgoing' and cur_packet.port == 53):
+
 
                 #dns information after ipv4 header and udp header = ~20 bytes + 8 bytes
                 byte_dns_begin = cur_packet.next_header_begin + 8
                 byte_dns_header_ends = cur_packet.next_header_begin + 8 + 12
                 #examine qd count in header
                 qd_count = struct.unpack("!B", pkt[(byte_dns_begin + 4):(byte_dns_begin + 5)])[0]
-                print 'got qd count: ', qd_count
+
                 if (qd_count == 1):
                       #assuming the qtype is 2 bits away ... there may be a bug here
                       qtype = struct.unpack("!H", pkt[(byte_dns_header_ends + 2):(byte_dns_header_ends+4)])[0]
@@ -146,13 +142,10 @@ class Rule:
                               # apply dns rules to this packet
                               dns_rule = True
 
-            if (dns_rule == True):
-                #criteria met, do the dns thing
-                
-
-
-
-
+            if (dns_rule == False):
+                return 0
+            else:
+                pass#criteria met, do domain name compare here!!!!
 
 
         else:
@@ -179,8 +172,6 @@ class Rule:
                     #pass if rest of the rules match
                     return 1
             # didn't match the entire rule, doesn't apply, move on to next rule
-
-
             return 0
 
 
