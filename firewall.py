@@ -123,10 +123,10 @@ class Rule:
             if (self.proto == cur_packet.pkt_proto):
                 print 'protos same'
                 compare_array.append(1)
-            if self.port_compare(self.ext_port, cur_packet.port):
+            if (self.port_compare(self.ext_port,cur_packet.port)==1):
                 print 'ports same'
                 compare_array.append(1)
-            if self.ext_ip_compare(self.ext_ip, cur_packet.ext_ip):
+            if (self.ext_ip_compare(self.ext_ip, cur_packet.ext_ip) == 1):
                 print 'ext same'
                 compare_array.append(1)
 
@@ -146,8 +146,9 @@ class Rule:
 
 
     def port_compare(self,rule_port, packet_port):
-        print 'comparing ports:', rule_port, packet_port
-        if (rule_port == 'any'):
+        print 'comparing ports:', packet_port, rule_port
+        if (rule_port == 'any' or rule_port == 'any\n'):
+            print 'rule port is any'
             return 1
 
         #shouldn't reach here because compare should have returned by now
