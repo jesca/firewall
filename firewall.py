@@ -12,11 +12,11 @@ import struct
 class Packet:
     def __init__(self, pkt, pkt_dir):
         pkt_proto_num = struct.unpack("!B", pkt[9:10])
-        self.drop_pkt = false
+        self.drop_pkt = False
 
 
         #last four bits of first byte
-        ip_header_len =  struct.unpack("!B", pkt[0:1]) & 0x0F
+        ip_header_len =  struct.unpack("!B", pkt[0:1])[0] & 0x0F
         if ip_header_len < 5:
             drop_pkt = true
         else:
@@ -36,10 +36,11 @@ class Packet:
             self.port = self.getPorts()
         else:
             self.pkt_proto = "any"
+            self.port =0
             # just pass this
 
 
-    def dropPacket():
+    def drop(self):
         #drop packet under certain conditions
         return self.drop_pkt
 
@@ -88,10 +89,10 @@ class Rule:
 
 
 
-    def compare(cur_packet):
+    def compare(self,cur_packet):
         #returns -1 if the rules break
         #else return 1
-        print cur_packet.pkt_proto, "packet proto", cur_packet.port, "port", cur_packet.
+        print cur_packet.pkt_proto, "packet proto", cur_packet.port, "port", cur_packet.port
         return 1
 
 
@@ -111,6 +112,7 @@ class Firewall:
 
         # country src
 	pkt_src = struct.unpack("!L", pkt[12:16])[0]
+	current_packet = Packet(pkt, pkt_dir)
 
         if current_packet.drop():
             # packet needs to be dropped for whatever reason before comparing the rules
