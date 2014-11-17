@@ -25,7 +25,7 @@ class Packet:
             #this is where the next header begins
             self.next_header_begin = ip_header_len * 4
 
-	
+
 	#set external_ip
         if pkt_dir == PKT_DIR_INCOMING:
             self.ext_ip = struct.unpack('!L', pkt[12:16])[0]
@@ -168,14 +168,15 @@ class Rule:
 
 
 	def form_mask(bits_set):
-		result = ""
-		i = 0
-		while i < 32:
-			if (i < n):
-				result += 0
-			else:
-				result += 1
-		return result
+	    result = ""
+	    i = 0
+	    while i < 32:
+		if (i < bits_set):
+		    result += "0"
+		else:
+		    result += "1"
+		i += 1
+	    return int(result, 2)
 			
 
 
@@ -221,7 +222,6 @@ class Firewall:
 
     def handle_packet(self, pkt_dir, pkt):
         # TODO: Your main firewall code will be here.
-        pkt_src = struct.unpack("!L", pkt[12:16])[0]
 	current_packet = Packet(pkt, pkt_dir)
         if not current_packet.drop():
             # compare packet details to the rules
