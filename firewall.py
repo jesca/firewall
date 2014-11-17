@@ -27,30 +27,30 @@ class Packet:
 
 
 
-    	#set external_ip
+      #set external_ip
 
         if pkt_dir == PKT_DIR_INCOMING:
             self.ext_ip = struct.unpack('!L', pkt[12:16])[0]
         elif pkt_dir == PKT_DIR_OUTGOING:
             self.ext_ip = struct.unpack('!L', pkt[16:20])[0]
 
-
-        print ("ext_ip:", self.ext_ip)
-
-
         #after getting the protocols, get the source and destination ports from the right places
         if (pkt_proto_num == 1):
             self.pkt_proto = "icmp"
             self.port = self.getType(pkt)
+            print 'setting port to via type.', self.port
         elif (pkt_proto_num == 6):
             self.pkt_proto = "tcp"
             self.port = self.getPorts(pkt, pkt_dir)
+            print 'setting port to via getport', self.port
         elif (pkt_proto_num == 17):
             self.pkt_proto = "udp"
             self.port = self.getPorts(pkt, pkt_dir)
+            print 'setting port to via getport', self.port
         else:
-            self.pkt_proto = "any"
-            self.port =0
+            self.pkt_proto = "other"
+            #it doesn't matter what the port is if the pkt_proto is 'any'
+            self.port = 'other'
             # just pass this
 
 
@@ -63,19 +63,17 @@ class Packet:
         byte_begin = self.next_header_begin
         if (pkt_dir == 'incoming'):
             # incoming, examine source (0:2)
-            port = struct.unpack("!H", pkt[byte_begin:(byte_begin + 2)])[0]
+            return struct.unpack("!H", pkt[byte_begin:(byte_begin + 2)])[0]
 
         else:
             #outgoing, examine destination (2:4)
-            port = struct.unpack("!H", pkt[(byte_begin + 2):(byte_begin+4)])[0]
-        return port
+            return struct.unpack("!H", pkt[(byte_begin + 2):(byte_begin+4)])[0]
 
     # for ICMP, the type is the port
     def getType(self, pkt):
 
         byte_begin = self.next_header_begin
-        port = struct.unpack("!B", pkt[byte_begin:(byte_begin + 1)])[0]
-        return port
+        return struct.unpack("!B", pkt[byte_begin:(byte_begin + 1)])[0]
 
 class Rule:
     def __init__(self, string):
@@ -109,14 +107,32 @@ class Rule:
         #returns -1 to drop
         #else return 1 go pass
 
+        #check port, ext port, ext ip address
+
         print 'packet_proto:', cur_packet.pkt_proto, ' packet_ip: ', cur_packet.ext_ip, ' packet_port: ',  cur_packet.port
         print 'rule_proto:', self.proto, 'rule_ip', self.ext_ip, ' rule_port:', self.ext_port
         #if packet protocol is not tcp, icmp, or udp, just pass
-        if (cur_packet.pkt_proto == 'any'):
+
+        #pass the packet if the current packet proto is any
+        if (cur_packet.pkt_proto == 'other'):
+            "other type of packet we aren't dealing with"
             return 1
+
         else:
-            #missing external ip check
-            if (self.proto == cur_packet.pkt_proto) and (self.port_compare(self.ext_port,cur_packet.port) and self.ext_ip_compare(self.ext_ip, cur_packet.ext_ip)):
+            compare_array = []
+            if (self.proto == cur_packet.pkt_proto):
+                print 'protos same'
+                compare_array.append(1)
+            if self.port_compare(self.ext_port, cur_packet.port):
+                print 'ports same'
+                compare_array.append(1)
+            if self.ext_ip_compare(self.ext_ip, cur_packet.ext_ip):
+                print 'ext same'
+                compare_array.append(1)
+
+            print "heres the compare_array", compare_array
+            if (len(compare_array) == 3):
+                # rule match!
                 if (self.verdict == 'drop'):
                     print 'everything matched, verdict drop'
                     #drop if rest of the rules match
@@ -125,13 +141,19 @@ class Rule:
                     print 'everything matched, verdict pass'
                     #pass if rest of the rules match
                     return 1
+            # didn't match the entire rule, doesn't apply, move on to next rule
             return 0
 
 
     def port_compare(self,rule_port, packet_port):
-
+        print 'comparing ports:', rule_port, packet_port
         if (rule_port == 'any'):
             return 1
+
+        #shouldn't reach here because compare should have returned by now
+        #if (packet_port == 'other'):
+            #not tcp, imcp, or udp, just pass it
+        #    return 1
         elif (rule_port.find('-') == -1):
             # single value
             if (rule_port == packet_port):
@@ -183,7 +205,7 @@ class Rule:
                 result += "1"
             i += 1
         return int(result, 2)
-            
+
 
 
     #compares two ip values in string format
@@ -236,7 +258,10 @@ class Firewall:
         if not current_packet.drop():
             # compare packet details to the rules
             if (len(self.rule_list) > 0):
+                i = 0
                 for rule in self.rule_list:
+                    print "rule", i
+                    i +=1
                     decision = rule.compare(current_packet)
                     if decision == 1:
                         # allow packet to pass
