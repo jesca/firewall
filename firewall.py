@@ -167,14 +167,21 @@ class Rule:
 
                     print ("restult_str: ", result_str)
 
+                    index_diff = qname_index - qname_i_holder
+
+                    print ("index diff: ", index_diff)
+
                     #assuming the qtype is 2 bits away ... there may be a bug here
                     #qtype = struct.unpack("!H", cur_packet.pkt[(byte_dns_header_ends + 2):(byte_dns_header_ends+4)])[0]
-                    qtype = struct.unpack("!H", cur_packet.pkt[(qname_index + 2):(qname_index + 4)])[0]
+                    qtype = struct.unpack("!H", cur_packet.pkt[(qname_index + 1):(qname_index + 3)])[0]
 
                     print("qtype: ", qtype)
 
                     if (qtype == 1 or qtype == 28):
-                        qclass = struct.unpack("!H", cur_packet.pkt[(byte_dns_header_ends + 4):(byte_dns_header_ends+6)])[0]
+                        qclass = struct.unpack("!H", cur_packet.pkt[(byte_dns_header_ends + 3):(byte_dns_header_ends + 5)])[0]
+
+                        print("qclass: ", qtype)
+
                         if qclass == 1:
                             # apply dns rules to this packet
                             #dns_rule = True
