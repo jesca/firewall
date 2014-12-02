@@ -16,10 +16,11 @@ class Packet:
         self.pkt = pkt
         self.drop_pkt = False
         self.pkt_dir = pkt_dir
+        self.qtype = -1
 
 
         #last four bits of first byte
-        ip_header_len =  struct.unpack("!B", pkt[0:1])[0] & 0x0F
+        ip_header_len = struct.unpack("!B", pkt[0:1])[0] & 0x0F
         if ip_header_len < 5:
             drop_pkt = true
         else:
@@ -102,7 +103,7 @@ class Rule:
 
 
 
-    def compare(self,cur_packet):
+    def compare(self,cur_packet, iface_int, iface_ext):
         #if packet protocol is not tcp, icmp, or udp, just pass
 
         #pass the packet if the current packet proto is any
@@ -143,6 +144,7 @@ class Rule:
 
                     index_diff = qname_index - qname_i_holder
                     qtype = struct.unpack("!H", cur_packet.pkt[(qname_index + 1):(qname_index + 3)])[0]
+                    cur_packet.qtype = qtype
 
                     if (qtype == 1 or qtype == 28):
                         qclass = struct.unpack("!H", cur_packet.pkt[(qname_index + 3):(qname_index + 5)])[0]
@@ -173,6 +175,10 @@ class Rule:
                                 if (self.verdict == 'drop'):
                                     #drop if rest of the rules match
                                     return -1
+                                elif (self.verdict == 'deny'):
+                                    #send dns deny then drop
+                                    send_deny_dns(cur_packet, iface_int, iface_ext)
+                                    return -1
                                 elif (self.verdict == 'pass'):
                                     #pass if rest of the rules match
                                     return 1
@@ -195,7 +201,11 @@ class Rule:
             if (len(compare_array) == 3):
                 # rule match!
                 if (self.verdict == 'drop'):
-                    #drop if rest of the rules match
+                    #drop if rest of the rules match 
+                    return -1
+                elif (self.verdict == 'deny' and self.proto == 'tcp'):
+                    #send tcp deny then drop
+                    send_deny_tcp(cur_packet, iface_int)
                     return -1
                 elif (self.verdict == 'pass'):
                     #pass if rest of the rules match
@@ -296,6 +306,155 @@ class Rule:
 
 
 
+
+
+
+############################ VVV New Methods VVV #####################################
+
+    def send_deny_tcp(rec_pkt, iface_int, iface_ext):
+        #create packet
+        #24 bytes in ipv4 header
+        #24 bytes in tcp header
+        #therefore tcp packet with no data should be 48 bytes large
+        deny_packet = generate_empty_packet(48)
+        #set version to 4 (0100-0000 as one byte = 64)
+        #set IHL to 24/4 = 6
+        deny_packet[0] = struct.pack('!B', 64 + 6)
+        #set protocol to tcp (6)
+        deny_packet[9] = struct.pack('!B', 6)
+        #set RST flag
+        deny_packet[24 + 13] = struct.pack('!B', 4)
+
+        rec_pkt_src
+        if (rec_pkt.pkt_dir == PKT_DIR_INCOMING):
+            rec_pkt_src = rec_pkt.pkt[16:20]
+        else:
+            rec_pkt_src = rec_pkt.pkt[12:16]
+
+        i = 0
+        while i < 4:
+            deny_packet[16 + i] = rac_pkt_src[i]
+            i += 1
+
+        #set destination to source of received packet
+        #set checksum
+        if (rec_pkt.pkt_dir == PKT_DIR_INCOMING):
+            self.iface_ext.send_ip_packet(pkt)
+        else:
+            self.iface_int.send_ip_packet(pkt)
+        print ("Denying tcp")
+
+
+    def send_deny_dns(rec_pkt, iface_int):
+        #if Qtype is AAAA, do nothing
+        if (rec_pkt.qtype == 28):
+            return
+        #create packet
+        #set answer section to A
+        #set TTL to 1 second
+        #copy ID field as appropriate (??)
+        #copy RCODE as appropriate (??)
+        #send response to "the internal interface pointing to the fixed IP address 54.173.224.150."
+        print ("Denying dns")
+
+
+
+
+    def generate_empty_packet(size):
+        result = ""
+        i = 0
+        while i < size:
+            result += '\x00'
+            i += 1
+        #might as well set total length here
+        result[3] = struct.pack("!B", size)
+        return result
+
+
+    #val is an integer
+    def checksum1(val):
+        shrinking_val = val
+        result = 0
+        while shrinking_val > 0:
+            result += shrinking_val & 1
+            shrinking_val = shrinking_val >> 1
+        return result
+
+
+    #input is now a string
+    def checksum2(str):
+        result = 0
+        for elem in str:
+            shrinking_val = struct.unpack('!B', elem)[0]
+            bits_in_elem = 0
+            while shrinking_val > 0:
+                bits_in_elem += shrinking_val & 1
+                shrinking_val = shrinking_val >> 1
+            result += bits_in_elem
+        return result
+
+
+
+class Http_Transaction:
+    def __init__(self, ext_ip):
+        self.ext_ip = ext_ip
+        self.req = ""
+        self.res = ""
+        self.req_expected = -1
+        self.res_expected = -1
+        self.req_remaining = -1
+        self.res_remaining = -1
+
+    def add_to_req(self, pkt):
+        #if pkt received is ahead of expected, drop it and don't log it
+        #if pkt received is behind expected, just don't log it
+        #add new elements of req header into self.req
+        if (self.req_remaining == 0 and self.res_remaining == 0):
+            log_http()
+
+
+    def add_to_res(self, pkt):
+        #if pkt received is ahead of expected, drop it and don't log it
+        #if pkt received is behind expected, just don't log it
+        #add new elements of res header into self.res 
+        if (self.req_remaining == 0 and self.res_remaining == 0):
+            log_http()
+
+
+    def log_http(self):
+        #host_name   method  path    version status_code object_size
+        log_info = []
+
+        #determine packet host_name
+        #determine packet method
+        #determine packet path
+        #determine packet version
+        #determine packet status_code
+        #determine packet object_size
+
+        #open log file
+        f = open(‘http.log’, ‘a’)
+        #write each element in log_info on new line        
+        i = 0
+        while i < len(log_info):
+            f.write(log_info[i])
+            #add a space or new line
+            if (i == len(log_info) - 1):
+                f.write(" ")
+            else:
+                f.write('\n')
+            i += 1
+
+        #flush file
+        f.flush()        
+        #close file?
+        f.close()
+        print ("logging http")
+
+
+############################ ^^^ New Methods ^^^ #####################################
+
+
 class Firewall:
     def __init__(self, config, iface_int, iface_ext):
         self.iface_int = iface_int
@@ -317,7 +476,7 @@ class Firewall:
                 for rule in self.rule_list:
                     i +=1
 
-                    decision = rule.compare(current_packet)
+                    decision = rule.compare(current_packet, self.iface_int, self.iface_ext)
                     if decision == 1:
                         # allow packet to pass
                         if pkt_dir == PKT_DIR_INCOMING:
@@ -365,5 +524,7 @@ class Firewall:
             i -= 1
 
         return rule_list
+
+
 
 
