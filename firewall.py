@@ -208,7 +208,14 @@ class Firewall:
         ihl = rec_pkt.ipv4_header.tot_len
         #dns after udp header
         dns_start_byte = rec_pkt.next_header_begin + 8
+        # set the qr bit to 1 to indicate that it's a response. the qr bit is a 1 bit field
+        byte_with_qr = struct.unpack('!B', packet[dns_start_byte + 2 ])[0] | 128
 
+        #stuff we need in the answer section
+        question_field = packet[dns_start_byte + 12:]
+        dns_ttl = struct.pack('!L', 1)
+        rdlen=struct.pack('!H', 4) #should always be 4 in this case
+        rdata = socket.inet_aton('54.173.224.150')
 
         """pack all new things for deny packet"""
         # default value for ttl
@@ -217,20 +224,39 @@ class Firewall:
         deny_src_port = struct.pack('!H', rec_pkt_dest_port)
         deny_dest_port = struct.pack('!H', rec_pkt_src_port)
         header_qr_bytes = struct.unpack('!H', packet[dns_start_byte + 2:dns_start_byte + 4])[0]
-        # set the qr bit to 1 to indicate that it's a response. the qr bit is a 1 bit field
-        byte_with_qr = struct.unpack('!B', packet[dns_start_byte + 2 ])[0] | 128
-        # set ancount to 1
+        # set ancount to 1, ns count to 0, arcount to 0
         ancount = struct.pack('!H', 1)
-        #TODO:
+        nscount = struct.pack('!H', 0)
+        arcount = struct.pack('!H', 0)
+
+
+        newval = struct.pack("!B", byte_with_qr)
+
         """append shit"""
         """ipv4""""
         new_deny_packet = rec_pkt[0:8] + ttl + rec_pkt[9:12] + socket.inet_aton(rec_pkt.dest_ip) + socket.inet_aton(rec_pkt.src_ip) + rec_pkt[20:]
         """udp""""
         new_deny_packet = new_deny_packet[0:ihl] + deny_src_port + deny_dst_port + new_deny_packet[ihl + 4:]
         """ dns """
-        new_deny_packet = packet[dns_start_byte + 2] = struct.pack("!B", new_val)
-        new_deny_packet = new_deny_packet[0:dns_start_byte + 6] + ancount + packet[dns_header + 8:]
-        #To indicate it's a response there's a one bit wide QR field you should set to 1.
+
+        #header
+        #inclusive in front, exclusive at end
+        new_deny_packet = new_deny_packet[dns_start_byte + 2] + new_val + new_deny_packet[dns_start_byte+3:dns_start_byte+6] + ancount + nscount +arcount + new_deny_packet[12:]
+
+        """break here to find the qname length"""
+        byte_dns_header_ends = rec_pkt.next_header_begin + 8 + 12
+        qname_index = byte_dns_header_ends
+        qname_i_holder = qname_index
+        qname_index += 1
+        while ord(cur_packet.pkt[qname_index])!= 00:
+            qname_index += 1
+        """end break"""
+
+        #question and #answer section should have name,type,class,ttl,rdlength,rdata
+        #see http://www.tcpipguide.com/free/t_DNSMessageResourceRecordFieldFormats-2.htm
+
+        #not sure if + 5 is correct. I want to add 4 bytes to where qname_index ends..
+        new_deny_packet = new_deny_packet[0:qname_index+5] + dns_ttl + rdlen + rdata
 
 
 
