@@ -6,21 +6,25 @@ import struct
 import socket
 
 
-# TODO: Feel free to import any Python standard moduless as necessary.
-# (http://docs.python.org/2/library/)
-# You must NOT use any 3rd-party libraries, though.
 
 class Packet:
     def __init__(self, pkt, pkt_dir):
-        pkt_proto_num = struct.unpack("!B", pkt[9:10])[0]
+        self.pkt_proto_num = struct.unpack("!B", pkt[9:10])[0]
         self.pkt = pkt
         self.drop_pkt = False
         self.pkt_dir = pkt_dir
         self.qtype = -1
 
+        #added by jessica part 2
+        self.ipv4_header = IPV4_header(pkt)
+
 
         #last four bits of first byte
-        ip_header_len = struct.unpack("!B", pkt[0:1])[0] & 0x0F
+        #self.ip_header_len = struct.unpack("!B", pkt[0:1])[0] & 0x0F on piazza
+        #changed by jessica to ord(a) & 0x0f (00001111b) will leave only the last 4 bits.
+        self.ip_header_len = ord(pkt[0:1]) & 0xf0
+        print "ip header len: ", self.ip_header_len
+
         if ip_header_len < 5:
             drop_pkt = true
         else:
@@ -28,13 +32,17 @@ class Packet:
             #this is where the next header begins
             self.next_header_begin = ip_header_len * 4
 
-
-
-      #set external_ip
+       #set external_ip
         if pkt_dir == PKT_DIR_INCOMING:
-            self.ext_ip = struct.unpack('!L', pkt[12:16])[0]
+            self.ext_ip = socket.inet_ntoa(pkt[12:16])
+
         elif pkt_dir == PKT_DIR_OUTGOING:
-            self.ext_ip = struct.unpack('!L', pkt[16:20])[0]
+            self.ext_ip = socket.inet_ntoa(pkt[16:20])
+
+
+        #added by jessica part 2
+        self.src_ip = socket.inet_ntoa(pkt[12:16])
+        self.dest_ip = socket.inet_ntoa(pkt[16:20])
 
         #after getting the protocols, get the source and destination ports from the right places
         if (pkt_proto_num == 1):
@@ -42,6 +50,7 @@ class Packet:
             self.port = self.getType(pkt)
         elif (pkt_proto_num == 6):
             self.pkt_proto = "tcp"
+            # the port we use to send stuff out
             self.port = self.getPorts(pkt, pkt_dir)
         elif (pkt_proto_num == 17):
             self.pkt_proto = "udp"
@@ -51,6 +60,11 @@ class Packet:
             #it doesn't matter what the port is if the pkt_proto is 'any'
             self.port = 'other'
             # just pass this
+
+    #added by jessica part 2
+    def getIp4v(self, pkt):
+        # Get all necessary information out of the packet, create the ipv4 headers, and tcp headers, then generate the packet
+        self.ipv4_header = IPV4_header(pkt)
 
 
     def drop(self):
@@ -66,13 +80,340 @@ class Packet:
 
         else:
             #outgoing, examine destination (2:4)
-            return struct.unpack("!H", pkt[(byte_begin + 2):(byte_begin+4)])[0]
+            return struct.unpack("!H", pkt[byte_begin:(byte_begin + 2)])[0]
+
+
 
     # for ICMP, the type is the port
     def getType(self, pkt):
-
         byte_begin = self.next_header_begin
         return struct.unpack("!B", pkt[byte_begin:(byte_begin + 1)])[0]
+
+
+
+class Firewall:
+    def __init__(self, config, iface_int, iface_ext):
+        self.iface_int = iface_int
+        self.iface_ext = iface_ext
+        self.ip_list = self.getGeoList()
+        self.rule_list = self.makeRuleList(config)
+
+        #added by jessica part2
+
+
+    def handle_packet(self, pkt_dir, pkt):
+        # TODO: Your main firewall code will be here.
+        current_packet = Packet(pkt, pkt_dir)
+
+        if not current_packet.drop():
+            # compare packet details to the rules
+            if (len(self.rule_list) > 0):
+                i = 0
+                for rule in self.rule_list:
+                    i +=1
+
+                    decision = rule.compare(current_packet, self.iface_int, self.iface_ext)
+                    if decision == 1:
+                        # allow packet to pass
+                        if pkt_dir == PKT_DIR_INCOMING:
+                            self.iface_int.send_ip_packet(pkt)
+                        elif pkt_dir == PKT_DIR_OUTGOING:
+                            self.iface_ext.send_ip_packet(pkt)
+                    elif decision == -1:
+                        return
+
+
+            # doesn't match any rule ... pass
+            if pkt_dir == PKT_DIR_INCOMING:
+                self.iface_int.send_ip_packet(pkt)
+            elif pkt_dir == PKT_DIR_OUTGOING:
+                self.iface_ext.send_ip_packet(pkt)
+
+
+    # Helper method to get the country codes
+    def getGeoList(self):
+        geoip_file = open('geoipdb.txt' ,"r")
+        geoip_str_list = geoip_file.readlines()
+        ip_list = []
+        for line in geoip_str_list:
+            split_line = line.split(" ")
+            ip_list.append(split_line)
+        return ip_list
+
+    def makeRuleList(self,config):
+        config_file = open(config['rule'],"r")
+        rule_str_list = config_file.readlines()
+        i = 0
+        while (i < len(rule_str_list)):
+            line = rule_str_list[i]
+            if (line[0] == '%' or len(line.split(" ")) < 3):
+                rule_str_list.remove(line)
+            else:
+                i += 1
+
+        rule_list = []
+
+        i -= 1
+        while (i > -1):
+            rule_line = rule_str_list[i]
+            rule_list.append(Rule(rule_line, self.ip_list))
+            i -= 1
+
+        return rule_list
+
+
+
+############################ VVV New Methods VVV #####################################
+
+   def send_deny_tcp(self, rec_pkt):
+       """stuff we need"""
+       rec_pkt_src_port = struct.unpack('!H', rec_pkt.next_header_begin:rec_pkt.next_header_begin + 2])[0]
+       rec_pkt_dest_port = struct.unpack('!H', rec_pkt.next_header_begin + 2:rec_pkt.next_header_begin + 4])[0]
+       ihl = rec_pkt.ipv4_header.tot_len
+       # 4 bytes
+       rec_pkt_seqno = struct.unpack('!L', packet[ihl + 4:ihl + 8])[0]
+
+       """pack all new things for deny packet"""
+       # default value for ttl
+       ttl = struct.pack('!B', 64)
+       #set src port to rec packet's dst, vice versa
+       deny_src_port = struct.pack('!H', rec_pkt_dest_port)
+       deny_dest_port = struct.pack('!H', rec_pkt_src_port)
+       deny_ack_num = struct.pack('!L', rec_pkt_seqno + 1)
+       # ack : 0x10, 0x04
+       tcp_flags = struct.pack('!B', 0x10 + 0x04)
+       deny_checksum = struct.pack('!H', self.checksum2(rec_pkt.ipv4_header.checksum))
+
+       """append shit together"""
+       #first do the ipv4 header shit --- up til ihl bytes
+       new_deny_packet = rec_pkt[0:8] + ttl + rec_pkt[9:12] + socket.inet_aton(rec_pkt.dest_ip) + socket.inet_aton(rec_pkt.src_ip) + rec_pkt[20:]
+
+       # now do the tcp shit, up to 14 bytes
+       #Your ACK number should be previous packet's SEQ number + 1.
+       new_deny_packet = new_deny_packet[0:ihl] + deny_src_port + deny_dst_port + new_deny_packet[ihl+4:ihl+8] + deny_ack_num + tcp_flags + new_deny_packet[ihl + 14:]
+
+       # TODO: checksum for ipv4 and tcp hasn't been set!!!!!!!!!!!
+
+       if (rec_pkt.pkt_dir == PKT_DIR_INCOMING):
+           self.iface_ext.send_ip_packet(new_deny_packet)
+       else:
+           self.iface_int.send_ip_packet(new_deny_packet)
+       print ("Denying tcp packet")
+
+
+    def send_deny_dns(self, rec_pkt):
+        """stuff we need"""
+        rec_pkt_src_port = struct.unpack('!H', rec_pkt.next_header_begin:rec_pkt.next_header_begin + 2])[0]
+        rec_pkt_dest_port = struct.unpack('!H', rec_pkt.next_header_begin + 2:rec_pkt.next_header_begin + 4])[0]
+        ihl = rec_pkt.ipv4_header.tot_len
+        #dns after udp header
+        dns_start_byte = rec_pkt.next_header_begin + 8
+
+
+        """pack all new things for deny packet"""
+        # default value for ttl
+        ttl = struct.pack('!B', 64)
+        #set src port to rec packet's dst, vice versa
+        deny_src_port = struct.pack('!H', rec_pkt_dest_port)
+        deny_dest_port = struct.pack('!H', rec_pkt_src_port)
+        header_qr_bytes = struct.unpack('!H', packet[dns_start_byte + 2:dns_start_byte + 4])[0]
+        # set the qr bit to 1 to indicate that it's a response. the qr bit is a 1 bit field
+        byte_with_qr = struct.unpack('!B', packet[dns_start_byte + 2 ])[0] | 128
+        # set ancount to 1
+        ancount = struct.pack('!H', 1)
+        #TODO:
+        """append shit"""
+        """ipv4""""
+        new_deny_packet = rec_pkt[0:8] + ttl + rec_pkt[9:12] + socket.inet_aton(rec_pkt.dest_ip) + socket.inet_aton(rec_pkt.src_ip) + rec_pkt[20:]
+        """udp""""
+        new_deny_packet = new_deny_packet[0:ihl] + deny_src_port + deny_dst_port + new_deny_packet[ihl + 4:]
+        """ dns """
+        new_deny_packet = packet[dns_start_byte + 2] = struct.pack("!B", new_val)
+        new_deny_packet = new_deny_packet[0:dns_start_byte + 6] + ancount + packet[dns_header + 8:]
+        #To indicate it's a response there's a one bit wide QR field you should set to 1.
+
+
+
+        """Finally send the packet """
+        if (rec_pkt.pkt_dir == PKT_DIR_INCOMING):
+            self.iface_ext.send_ip_packet(new_deny_packet)
+        else:
+            self.iface_int.send_ip_packet(new_deny_packet)
+        print ("Denying dns packet")
+
+
+    """
+
+    def send_deny_tcp(rec_pkt, iface_int, iface_ext):
+        #create packet
+
+        #24 bytes in tcp header
+        #therefore tcp packet with no data should be 48 bytes large
+        deny_packet = generate_empty_packet(48)
+        #set version to 4 (0100-0000 as one byte = 64)
+        #set IHL to 24/4 = 6
+        deny_packet[0] = struct.pack('!B', 64 + 6)
+        #set protocol to tcp (6)
+        deny_packet[9] = struct.pack('!B', 6)
+        #set RST flag
+        deny_packet[24 + 13] = struct.pack('!B', 4)
+
+        if (rec_pkt.pkt_dir == PKT_DIR_INCOMING):
+            rec_pkt_src = rec_pkt.pkt[16:20]
+        else:
+            rec_pkt_src = rec_pkt.pkt[12:16]
+
+        i = 0
+        while i < 4:
+            deny_packet[16 + i] = rac_pkt_src[i]
+            i += 1
+
+        #set destination to source of received packet
+        #set checksum
+        if (rec_pkt.pkt_dir == PKT_DIR_INCOMING):
+            self.iface_ext.send_ip_packet(pkt)
+        else:
+            self.iface_int.send_ip_packet(pkt)
+        print ("Denying tcp")
+    """
+
+    """In addition to dropping a matching TCP packet, respond to the initiator (src	add, src port) with a
+    TCP packet with the RST flag set to 1.
+
+    If you simply drop these packets (with a drop rule), then the client application will try sending SYN
+    packets several times over the course of a minute or so before giving up. However, if you also send a RST
+    packet to the client (with a deny rule), the application will give up immediately."""
+
+    def send_deny_dns(rec_pkt, iface_int):
+        #if Qtype is AAAA, do nothing
+        if (rec_pkt.qtype == 28):
+            return
+        #create packet
+        #set answer section to A
+        #set TTL to 1 second
+        #copy ID field as appropriate (??)
+        #copy RCODE as appropriate (??)
+        #send response to "the internal interface pointing to the fixed IP address 54.173.224.150."
+        print ("Denying dns")
+
+
+
+    """
+    def generate_empty_packet(size):
+        result = ""
+        i = 0
+        while i < size:
+            result += '\x00'
+            i += 1
+        #might as well set version and ihl here
+        #https://piazza.com/class/hz9lw7aquvu2r9?cid=1341
+        result[3] = struct.pack('!B', 0x45)
+        return result
+    """
+
+
+    #val is an integer
+    def checksum1(val):
+        shrinking_val = val
+        result = 0
+        while shrinking_val > 0:
+            result += shrinking_val & 1
+            shrinking_val = shrinking_val >> 1
+        return result
+
+
+    #input is now a string
+    def checksum2(str):
+        result = 0
+        for elem in str:
+            shrinking_val = struct.unpack('!B', elem)[0]
+            bits_in_elem = 0
+            while shrinking_val > 0:
+                bits_in_elem += shrinking_val & 1
+                shrinking_val = shrinking_val >> 1
+            result += bits_in_elem
+        return result
+
+
+class IPV4_header:
+    def __init__(self, pkt):
+
+        #unpacking the bytes
+        self.version_length = struct.unpack('!B', pkt[0:1])[0]
+        self.tos = struct.unpack('!B', pkt[1:2])[0]
+        self.tot_len = struct.unpack('!H', pkt[2:4])[0]
+        self.ttl = struct.unpack('!B', pkt[8:9])[0]
+        self.checksum = struct.unpack('!H', pkt[10:12])[0]
+        self.protocol = pkt.pkt_proto_num
+        self.src_ip = pkt.src_ip
+        self.dest_ip = pkt.dest_ip
+
+
+class Http_Transaction:
+    def __init__(self, ext_ip):
+        self.ext_ip = ext_ip
+        self.req = ""
+        self.res = ""
+        self.req_expected = -1
+        self.res_expected = -1
+        self.req_remaining = -1
+        self.res_remaining = -1
+
+    def add_to_req(self, pkt):
+        #if pkt received is ahead of expected, drop it and don't log it
+        #if pkt received is behind expected, just don't log it
+        #add new elements of req header into self.req
+        if (self.req_remaining == 0 and self.res_remaining == 0):
+            log_http()
+
+
+    def add_to_res(self, pkt):
+        #if pkt received is ahead of expected, drop it and don't log it
+        #if pkt received is behind expected, just don't log it
+        #add new elements of res header into self.res
+        if (self.req_remaining == 0 and self.res_remaining == 0):
+            log_http()
+
+
+    def log_http(self):
+        #host_name   method  path    version status_code object_size
+        log_info = []
+
+        #determine packet host_name
+        #determine packet method
+        #determine packet path
+        #determine packet version
+        #determine packet status_code
+        #determine packet object_size
+
+        #open log file
+        f = open(‘http.log’, ‘a’)
+        #write each element in log_info on new line
+        i = 0
+        while i < len(log_info):
+            f.write(log_info[i])
+            #add a space or new line
+            if (i == len(log_info) - 1):
+                f.write(" ")
+            else:
+                f.write('\n')
+            i += 1
+
+        #flush file
+        f.flush()
+        #close file?
+        f.close()
+        print ("logging http")
+
+
+############################ ^^^ New Methods ^^^ #####################################
+
+
+
+
+
+
+
 
 class Rule:
     def __init__(self, string, geoip_list):
@@ -201,7 +542,7 @@ class Rule:
             if (len(compare_array) == 3):
                 # rule match!
                 if (self.verdict == 'drop'):
-                    #drop if rest of the rules match 
+                    #drop if rest of the rules match
                     return -1
                 elif (self.verdict == 'deny' and self.proto == 'tcp'):
                     #send tcp deny then drop
@@ -303,228 +644,3 @@ class Rule:
     def ip_to_int(self, ip_str):
         split = ip_str.split('.')
         return (int(split[0]) * 16777216) + (int(split[1]) * 65536) + (int(split[2]) * 256) + (int(split[3]))
-
-
-
-
-
-
-############################ VVV New Methods VVV #####################################
-
-    def send_deny_tcp(rec_pkt, iface_int, iface_ext):
-        #create packet
-        #24 bytes in ipv4 header
-        #24 bytes in tcp header
-        #therefore tcp packet with no data should be 48 bytes large
-        deny_packet = generate_empty_packet(48)
-        #set version to 4 (0100-0000 as one byte = 64)
-        #set IHL to 24/4 = 6
-        deny_packet[0] = struct.pack('!B', 64 + 6)
-        #set protocol to tcp (6)
-        deny_packet[9] = struct.pack('!B', 6)
-        #set RST flag
-        deny_packet[24 + 13] = struct.pack('!B', 4)
-
-        rec_pkt_src
-        if (rec_pkt.pkt_dir == PKT_DIR_INCOMING):
-            rec_pkt_src = rec_pkt.pkt[16:20]
-        else:
-            rec_pkt_src = rec_pkt.pkt[12:16]
-
-        i = 0
-        while i < 4:
-            deny_packet[16 + i] = rac_pkt_src[i]
-            i += 1
-
-        #set destination to source of received packet
-        #set checksum
-        if (rec_pkt.pkt_dir == PKT_DIR_INCOMING):
-            self.iface_ext.send_ip_packet(pkt)
-        else:
-            self.iface_int.send_ip_packet(pkt)
-        print ("Denying tcp")
-
-
-    def send_deny_dns(rec_pkt, iface_int):
-        #if Qtype is AAAA, do nothing
-        if (rec_pkt.qtype == 28):
-            return
-        #create packet
-        #set answer section to A
-        #set TTL to 1 second
-        #copy ID field as appropriate (??)
-        #copy RCODE as appropriate (??)
-        #send response to "the internal interface pointing to the fixed IP address 54.173.224.150."
-        print ("Denying dns")
-
-
-
-
-    def generate_empty_packet(size):
-        result = ""
-        i = 0
-        while i < size:
-            result += '\x00'
-            i += 1
-        #might as well set total length here
-        result[3] = struct.pack("!B", size)
-        return result
-
-
-    #val is an integer
-    def checksum1(val):
-        shrinking_val = val
-        result = 0
-        while shrinking_val > 0:
-            result += shrinking_val & 1
-            shrinking_val = shrinking_val >> 1
-        return result
-
-
-    #input is now a string
-    def checksum2(str):
-        result = 0
-        for elem in str:
-            shrinking_val = struct.unpack('!B', elem)[0]
-            bits_in_elem = 0
-            while shrinking_val > 0:
-                bits_in_elem += shrinking_val & 1
-                shrinking_val = shrinking_val >> 1
-            result += bits_in_elem
-        return result
-
-
-
-class Http_Transaction:
-    def __init__(self, ext_ip):
-        self.ext_ip = ext_ip
-        self.req = ""
-        self.res = ""
-        self.req_expected = -1
-        self.res_expected = -1
-        self.req_remaining = -1
-        self.res_remaining = -1
-
-    def add_to_req(self, pkt):
-        #if pkt received is ahead of expected, drop it and don't log it
-        #if pkt received is behind expected, just don't log it
-        #add new elements of req header into self.req
-        if (self.req_remaining == 0 and self.res_remaining == 0):
-            log_http()
-
-
-    def add_to_res(self, pkt):
-        #if pkt received is ahead of expected, drop it and don't log it
-        #if pkt received is behind expected, just don't log it
-        #add new elements of res header into self.res 
-        if (self.req_remaining == 0 and self.res_remaining == 0):
-            log_http()
-
-
-    def log_http(self):
-        #host_name   method  path    version status_code object_size
-        log_info = []
-
-        #determine packet host_name
-        #determine packet method
-        #determine packet path
-        #determine packet version
-        #determine packet status_code
-        #determine packet object_size
-
-        #open log file
-        f = open(‘http.log’, ‘a’)
-        #write each element in log_info on new line        
-        i = 0
-        while i < len(log_info):
-            f.write(log_info[i])
-            #add a space or new line
-            if (i == len(log_info) - 1):
-                f.write(" ")
-            else:
-                f.write('\n')
-            i += 1
-
-        #flush file
-        f.flush()        
-        #close file?
-        f.close()
-        print ("logging http")
-
-
-############################ ^^^ New Methods ^^^ #####################################
-
-
-class Firewall:
-    def __init__(self, config, iface_int, iface_ext):
-        self.iface_int = iface_int
-        self.iface_ext = iface_ext
-        self.ip_list = self.getGeoList()
-
-        self.rule_list = self.makeRuleList(config)
-
-
-
-    def handle_packet(self, pkt_dir, pkt):
-        # TODO: Your main firewall code will be here.
-        current_packet = Packet(pkt, pkt_dir)
-
-        if not current_packet.drop():
-            # compare packet details to the rules
-            if (len(self.rule_list) > 0):
-                i = 0
-                for rule in self.rule_list:
-                    i +=1
-
-                    decision = rule.compare(current_packet, self.iface_int, self.iface_ext)
-                    if decision == 1:
-                        # allow packet to pass
-                        if pkt_dir == PKT_DIR_INCOMING:
-                            self.iface_int.send_ip_packet(pkt)
-                        elif pkt_dir == PKT_DIR_OUTGOING:
-                            self.iface_ext.send_ip_packet(pkt)
-                    elif decision == -1:
-                        return
-
-
-            # doesn't match any rule ... pass
-            if pkt_dir == PKT_DIR_INCOMING:
-                self.iface_int.send_ip_packet(pkt)
-            elif pkt_dir == PKT_DIR_OUTGOING:
-                self.iface_ext.send_ip_packet(pkt)
-
-
-    # Helper method to get the country codes
-    def getGeoList(self):
-        geoip_file = open('geoipdb.txt' ,"r")
-        geoip_str_list = geoip_file.readlines()
-        ip_list = []
-        for line in geoip_str_list:
-            split_line = line.split(" ")
-            ip_list.append(split_line)
-        return ip_list
-
-    def makeRuleList(self,config):
-        config_file = open(config['rule'],"r")
-        rule_str_list = config_file.readlines()
-        i = 0
-        while (i < len(rule_str_list)):
-            line = rule_str_list[i]
-            if (line[0] == '%' or len(line.split(" ")) < 3):
-                rule_str_list.remove(line)
-            else:
-                i += 1
-
-        rule_list = []
-
-        i -= 1
-        while (i > -1):
-            rule_line = rule_str_list[i]
-            rule_list.append(Rule(rule_line, self.ip_list))
-            i -= 1
-
-        return rule_list
-
-
-
-
